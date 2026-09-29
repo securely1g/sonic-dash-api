@@ -1,0 +1,27 @@
+module(
+    name = "sonic-dash-api",
+    version = "0.0.0",
+    bazel_compatibility = [
+        ">=8.5.1",
+        "<=8.5.1",
+    ],
+)
+
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "rules_cc", version = "0.2.8")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "sonic-build-infra", version = "0.0.7-91fe8246519f99838da936eee54e85208c704a4d", repo_name = "sonic_build_infra")
+
+prebuilt = use_extension("//bazel:prebuilt.bzl", "prebuilt")
+use_repo(prebuilt, "sonic_dash_api_prebuilt_amd64", "sonic_dash_api_prebuilt_arm64")
+
+# The public DASH C++ interface does not add protobuf dependencies. These shared
+# repositories provide the toolchain and protobuf runtime for the focused tests.
+gcc = use_extension("@sonic_build_infra//toolchains/gcc:extensions.bzl", "gcc")
+use_repo(gcc, "gcc_toolchains")
+
+register_toolchains("@gcc_toolchains//:all")
+
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+use_repo(apt, "trixie")

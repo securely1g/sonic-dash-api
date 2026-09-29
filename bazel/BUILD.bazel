@@ -1,0 +1,45 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_python//python:defs.bzl", "py_test")
+
+exports_files([
+    "BUILD.prebuilt.bazel",
+    "prebuilt.json",
+])
+
+py_test(
+    name = "prebuilt_contract_test",
+    srcs = ["prebuilt_contract_test.py"],
+    args = [
+        "--manifest",
+        "$(rootpath :prebuilt.json)",
+        "--library",
+        "$(rootpath //:shared_library)",
+        "--architecture",
+    ] + select({
+        "@platforms//cpu:arm64": ["arm64"],
+        "@platforms//cpu:x86_64": ["amd64"],
+    }),
+    data = [
+        ":prebuilt.json",
+        "//:prebuilt_files",
+        "//:shared_library",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "runtime_consumer_test",
+    srcs = ["runtime_consumer.cc"],
+    args = ["$(rootpath //:shared_library)"],
+    copts = ["-std=c++14"],
+    data = ["//:shared_library"],
+    linkopts = ["-ldl"],
+    linkstatic = False,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:dashapi",
+        # This runtime dependency belongs only to the validation consumer.
+        # Production consumers continue to provide their selected protobuf.
+        "@trixie//libprotobuf32t64",
+    ],
+)

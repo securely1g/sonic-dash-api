@@ -1,0 +1,22 @@
+_PREBUILT_REPOSITORIES = {
+    "@platforms//cpu:arm64": "@sonic_dash_api_prebuilt_arm64//:",
+    "@platforms//cpu:x86_64": "@sonic_dash_api_prebuilt_amd64//:",
+}
+
+alias(
+    name = "dashapi",
+    actual = select({cpu: repository + "dashapi" for cpu, repository in _PREBUILT_REPOSITORIES.items()}),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "prebuilt_files",
+    actual = select({cpu: repository + "prebuilt_files" for cpu, repository in _PREBUILT_REPOSITORIES.items()}),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "shared_library",
+    actual = select({cpu: repository + "shared_library" for cpu, repository in _PREBUILT_REPOSITORIES.items()}),
+    visibility = ["//bazel:__pkg__"],
+)
