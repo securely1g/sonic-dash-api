@@ -37,10 +37,10 @@ dependency. It uses `dpkg-deb` and `readelf` from the native Trixie test image.
 
 `//bazel:runtime_consumer_test` compiles against `utils.h`, links the imported
 library, exercises its C++ and C table-name APIs and protobuf JSON conversion,
-and confirms that the loaded file is the selected import. Its protobuf runtime
-dependency comes from the existing infrastructure 0.0.7 Trixie repository and
-belongs only to this test consumer. Production consumers retain their own
-protobuf dependency selection.
+and confirms that the loaded file is the selected import. Its test-only Debian
+dependency set uses infrastructure 0.0.7's pinned Trixie suites and the existing
+Distroless `libprotobuf-dev:libprotobuf` C++ target. Production consumers retain
+their own protobuf dependency selection.
 
 Registry CI resolves the immutable module source, fetches the recorded package
 for each native architecture, builds `prebuilt_files` and the runtime consumer,

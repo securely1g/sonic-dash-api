@@ -40,6 +40,6 @@ cc_test(
         "//:dashapi",
         # This runtime dependency belongs only to the validation consumer.
         # Production consumers continue to provide their selected protobuf.
-        "@trixie//libprotobuf32t64",
+        "@dash_validation_debian//libprotobuf-dev:libprotobuf",
     ],
 )
