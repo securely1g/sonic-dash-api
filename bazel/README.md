@@ -22,6 +22,14 @@ or changed package fails the fetch; the module does not select a replacement.
 - `@sonic_dash_api//:prebuilt_files` exposes the selected input DEB, imported C++
   files, and `IMPORTS.json` for validation and artifact retention. This is the
   original input package, not a package produced by Bazel.
+- `@sonic_dash_api//:libdashapi_pkg` packages the selected imported library at
+  `/usr/lib/libdashapi.so`, root-owned with mode 0644, for runtime container
+  layers. It preserves the DEB's library bytes and absent SONAME. Consumers
+  continue to supply the matching protobuf runtime.
+
+The imported producer library is already stripped. This module has no matching
+DWARF or split debug artifact and does not advertise debug-symbol coverage for
+the prebuilt library. The runtime tar does not invent a SONAME or re-strip it.
 
 The target selects AMD64 or ARM64 from the target CPU and is limited to Linux.
 The validated configurations use native Debian Trixie execution and target
@@ -34,6 +42,8 @@ outside this import's validation.
 identity, compares every exported header and library byte with the DEB payload,
 and checks the ELF architecture, absent SONAME, and `libprotobuf.so.32` runtime
 dependency. It uses `dpkg-deb` and `readelf` from the native Trixie test image.
+It also verifies the runtime tar's exact library bytes, installed path, ownership,
+permissions and absence of development headers or unrelated files.
 
 `//bazel:runtime_consumer_test` compiles against `utils.h`, links the imported
 library, exercises its C++ and C table-name APIs and protobuf JSON conversion,
