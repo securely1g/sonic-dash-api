@@ -37,6 +37,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--library", required=True, type=Path)
+    parser.add_argument("--runtime-tar", required=True, type=Path)
     parser.add_argument("--architecture", required=True, choices=("amd64", "arm64"))
     args = parser.parse_args()
 
@@ -86,6 +87,18 @@ def main() -> None:
     require(bool(expected) and set(selected) == set(expected), "public header/library inventory differs from the selected DEB")
     require(all(sha256(path) == expected[name] for name, path in selected.items()), "public header/library bytes differ from the selected DEB")
 
+    with tarfile.open(args.runtime_tar) as archive:
+        members = archive.getmembers()
+        require(len(members) == 1, "runtime package must contain only the imported shared library")
+        member = members[0]
+        require(member.name.removeprefix("./") == "usr/lib/libdashapi.so" and member.isfile(),
+                "runtime package library has the wrong installed path or file type")
+        require(member.uid == 0 and member.gid == 0 and member.mode == 0o644,
+                "runtime package library has incorrect ownership or permissions")
+        stream = archive.extractfile(member)
+        require(stream is not None and hashlib.sha256(stream.read()).hexdigest() == expected["usr/lib/libdashapi.so"],
+                "runtime package library differs from the selected DEB")
+
     header = run("readelf", "--file-header", str(library))
     machine = "Advanced Micro Devices X86-64" if args.architecture == "amd64" else "AArch64"
     require(re.search(r"Machine:\s+" + re.escape(machine) + r"\s*$", header, re.MULTILINE) is not None, "DASH library architecture differs from the selected package")
@@ -99,6 +112,7 @@ def main() -> None:
         "deb_sha256": entry["sha256"],
         "header_count": len(selected) - 1,
         "library_sha256": expected["usr/lib/libdashapi.so"],
+        "runtime_tar_sha256": sha256(args.runtime_tar),
         "needed": needed,
     }, sort_keys=True))
 
