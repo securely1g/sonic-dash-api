@@ -71,8 +71,16 @@ def main() -> None:
     def bazel(command: str, *arguments: str) -> str:
         return run(repo, "bazel", command, *options, *arguments)
 
-    execution_root = Path(bazel("info", "execution_root"))
-    testlogs = Path(bazel("info", "bazel-testlogs"))
+    platform_name = {"amd64": "x86_64_trixie", "arm64": "aarch64_trixie"}[args.architecture]
+    platform_label = "@sonic_build_infra//platforms:" + platform_name
+    canonical = bazel("cquery", "config(" + platform_label + ", target)", "--output=starlark", "--starlark:expr=target.label.repo_name")
+    require(re.fullmatch(r"[A-Za-z0-9._+-]+", canonical) is not None, "infrastructure canonical repository is ambiguous")
+    # Bazel 8 info does not apply the root module's apparent-repository mapping
+    # to platform flags. Keep the same platforms, using their resolved labels.
+    canonical_platform = "@@" + canonical + "//platforms:" + platform_name
+    info_options = ["--platforms=" + canonical_platform, "--host_platform=" + canonical_platform]
+    execution_root = Path(bazel("info", *info_options, "execution_root"))
+    testlogs = Path(bazel("info", *info_options, "bazel-testlogs"))
 
     def files(target: str) -> list[Path]:
         names = bazel("cquery", "config(" + target + ", target)", "--output=files").splitlines()
@@ -121,9 +129,6 @@ def main() -> None:
     for declaration in DECLARATIONS:
         retain(repo / declaration, Path("validation/declarations") / declaration)
     declared_version = module_version((repo / "MODULE.bazel").read_text(), "bazel_dep")
-    platform_label = "@sonic_build_infra//platforms:" + {"amd64": "x86_64_trixie", "arm64": "aarch64_trixie"}[args.architecture]
-    canonical = bazel("cquery", "config(" + platform_label + ", target)", "--output=starlark", "--starlark:expr=target.label.repo_name")
-    require(re.fullmatch(r"[A-Za-z0-9._+-]+", canonical) is not None, "infrastructure canonical repository is ambiguous")
     fetched_module = execution_root / "external" / canonical / "MODULE.bazel"
     require(fetched_module.is_file(), "resolved infrastructure MODULE.bazel is missing")
     require(module_version(fetched_module.read_text(), "module") == declared_version, "resolved infrastructure version differs from the declaration")
