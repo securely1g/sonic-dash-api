@@ -1,4 +1,4 @@
-"""Retain the tested DASH import and its native C++ consumer with provenance."""
+"""Retain source-built DASH packages, split symbols and native validation evidence."""
 
 from __future__ import annotations
 
@@ -14,8 +14,24 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 
-TESTS = ("prebuilt_contract_test", "runtime_consumer_test")
-DECLARATIONS = (".bazelversion", ".bazelrc", "MODULE.bazel", "MODULE.bazel.lock", "bazel/prebuilt.json")
+TESTS = {
+    "//bazel:source_contract_test": "bazel/source_contract_test",
+    "//bazel:runtime_consumer_test": "bazel/runtime_consumer_test",
+    "//bazel:utils_test": "bazel/utils_test",
+    # The public //bazel test suite runs this native Python test.
+    "//bazel:python_test": "misc/python_test",
+}
+DECLARATIONS = (
+    ".bazelversion", ".bazelrc", "MODULE.bazel", "MODULE.bazel.lock",
+    "BUILD.bazel", "sources.bzl", "bazel/BUILD.bazel", "misc/BUILD.bazel", "Makefile",
+    "debian/control", "debian/changelog",
+)
+PACKAGES = {
+    "//:libdashapi_pkg": (".tar", "packages/libdashapi.tar"),
+    "//:libdashapi_pkg.debug_symbols": (".tar.gz", "packages/libdashapi.debug.tar.gz"),
+    "//:libdashapi_deb": (".deb", "packages/libdashapi.deb"),
+    "//:libdashapi_dbg_deb": (".deb", "packages/libdashapi-dbg.deb"),
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -55,7 +71,7 @@ def main() -> None:
     repo = Path(__file__).resolve().parents[2]
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for owned in ("provenance.json", "import", "consumer", "validation/tests", "validation/declarations"):
+    for owned in ("provenance.json", "packages", "development", "consumer", "validation/tests", "validation/declarations"):
         require(not (output / owned).exists(), "output already contains a previous collection: " + owned)
 
     machine = {"amd64": "x86_64", "arm64": "aarch64"}[args.architecture]
@@ -96,18 +112,19 @@ def main() -> None:
         shutil.copyfile(source, destination)
         shutil.copymode(source, destination)
 
-    imported = files("//:prebuilt_files")
-    libraries = [path for path in imported if path.name == "libdashapi.so"]
-    require(len(libraries) == 1, "expected one selected DASH shared library")
-    import_root = libraries[0].parents[3]
-    entry = json.loads((repo / "bazel/prebuilt.json").read_text())["packages"][args.architecture]
-    relative_files = {path.relative_to(import_root).as_posix() for path in imported}
-    required = {entry["filename"], "IMPORTS.json", "payload/usr/lib/libdashapi.so", "payload/usr/include/dash_api/utils.h", "payload/usr/include/dash_api/types.pb.h"}
-    require(required <= relative_files, "prebuilt_files omits required input or consumer artifacts")
-    require(sha256(import_root / entry["filename"]) == entry["sha256"], "selected input DEB differs from its pinned hash")
-    require(json.loads((import_root / "IMPORTS.json").read_text()) == entry, "selected import provenance differs from its manifest")
-    for source in imported:
-        retain(source, Path("import") / source.relative_to(import_root))
+    for target, (suffix, destination) in PACKAGES.items():
+        candidates = [path for path in files(target) if path.name.endswith(suffix)]
+        require(len(candidates) == 1, "expected one package output: " + target)
+        retain(candidates[0], Path("packages") / candidates[0].name if suffix == ".deb" else destination)
+    libraries = files("//:shared_library")
+    require(len(libraries) == 1 and libraries[0].name == "libdashapi.so", "expected one source-built DASH library")
+    retain(libraries[0], "development/libdashapi.so")
+    headers = files("//:generated_headers")
+    proto_sources = sorted((repo / "proto").glob("*.proto"))
+    expected_headers = {source.stem + ".pb.h" for source in proto_sources} | {"utils.h"}
+    require(len(headers) == len(expected_headers) and {path.name for path in headers} == expected_headers, "public headers do not cover every protobuf source and utils.h")
+    for header in headers:
+        retain(header, Path("development/include/dash_api") / header.name)
 
     consumers = files("//bazel:runtime_consumer_test")
     require(len(consumers) == 1, "expected one compiled runtime consumer")
@@ -116,18 +133,22 @@ def main() -> None:
     require(re.search(r"Machine:\s+" + re.escape(elf_machine) + r"\s*$", elf_header, re.MULTILINE) is not None, "compiled consumer is not native to the selected architecture")
     retain(consumers[0], "consumer/runtime_consumer_test")
 
-    for test in TESTS:
-        directory = testlogs / "bazel" / test
+    for test, test_directory in TESTS.items():
+        directory = testlogs / test_directory
         result = ET.parse(directory / "test.xml").getroot()
         suites = list(result.iter("testsuite"))
         require(any(int(suite.get("tests", "0")) > 0 for suite in suites), "test result contains no executed cases: " + test)
         require(all(int(suite.get(field, "0")) == 0 for suite in suites for field in ("failures", "errors", "skipped")), "test suite reports incomplete or failed cases: " + test)
         require(not any(element.tag in ("failure", "error", "skipped") for element in result.iter()), "test result is not a complete pass: " + test)
         for filename in ("test.log", "test.xml"):
-            retain(directory / filename, Path("validation/tests") / test / filename)
+            retain(directory / filename, Path("validation/tests") / test_directory / filename)
 
     for declaration in DECLARATIONS:
         retain(repo / declaration, Path("validation/declarations") / declaration)
+    for source in proto_sources:
+        retain(source, Path("validation/declarations/proto") / source.name)
+    for source in sorted([*(repo / "bazel").rglob("*.bzl"), *(repo / "misc").glob("*.bzl")]):
+        retain(source, Path("validation/declarations") / source.relative_to(repo))
     declared_version = module_version((repo / "MODULE.bazel").read_text(), "bazel_dep")
     fetched_module = execution_root / "external" / canonical / "MODULE.bazel"
     require(fetched_module.is_file(), "resolved infrastructure MODULE.bazel is missing")
@@ -139,8 +160,8 @@ def main() -> None:
         for path in sorted(output.rglob("*")) if path.is_file()
     }
     provenance = {
-        "schema_version": 1,
-        "scope": "Pinned prebuilt C++ import and native consumer; the retained DEB is an input package, not a Bazel-produced package. Debug symbols and protobuf source compilation are outside this validation.",
+        "schema_version": 2,
+        "scope": "Source-generated C++ and Python protobuf APIs, C++ library, SWIG extension and CLI; Bazel-produced runtime/debug packages, native C++/Python tests, package inventory and matching split-symbol validation.",
         "source": {
             "revision": run(repo, "git", "rev-parse", "HEAD"),
             "tree": run(repo, "git", "rev-parse", "HEAD^{tree}"),
@@ -160,13 +181,14 @@ def main() -> None:
             for name in ("GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_WORKFLOW", "GITHUB_EVENT_NAME", "GITHUB_SHA")
             if name in os.environ
         },
-        "import": entry,
+        "package_targets": list(PACKAGES),
+        "protobuf_sources": [source.relative_to(repo).as_posix() for source in proto_sources],
         "infrastructure": {
             "version": declared_version,
             "canonical_repository": canonical,
             "module_sha256": sha256(fetched_module),
         },
-        "tests": ["//bazel:" + test for test in TESTS],
+        "tests": list(TESTS),
         "files": inventory,
     }
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")

@@ -2,7 +2,6 @@ name: Bazel
 
 on:
   pull_request:
-    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -54,7 +53,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            binutils build-essential ca-certificates curl git python3 tar xz-utils
+            binutils build-essential ca-certificates curl gdb git python3 tar xz-utils
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,20 +84,38 @@ jobs:
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=error
           @buildifier_prebuilt//:buildifier -- -mode=check -r "$GITHUB_WORKSPACE"
 
-      - name: Build the import and native consumer
+      - name: Build DASH from source and package its runtime and symbols
         run: >-
           bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=error
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-events.json"
-          //:prebuilt_files //bazel:runtime_consumer_test
+          //:libdashapi_deb //:libdashapi_dbg_deb //bazel:runtime_consumer_test
 
-      - name: Run import and runtime tests
+      - name: Run C++, Python, runtime and package tests
         run: >-
           bazel test ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=error
           --nocache_test_results --test_output=errors
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/test-events.json"
-          //bazel:prebuilt_contract_test //bazel:runtime_consumer_test
+          //bazel:source_contract_test //bazel:runtime_consumer_test
+          //bazel:utils_test //bazel:python_test
 
-      - name: Collect validated inputs and provenance
+      - name: Test installed packages with their declared runtime dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            ./bazel-bin/libdashapi_1.0.0_${{ matrix.architecture }}.deb \
+            ./bazel-bin/libdashapi-dbg_1.0.0_${{ matrix.architecture }}.deb
+          env -u LD_LIBRARY_PATH -u PYTHONPATH \
+            python3 bazel/installed_package_test.py \
+            2>&1 | tee artifacts/validation/installed-package-test.log
+          dpkg-query -W -f='${binary:Package}\t${Version}\n' \
+            > artifacts/validation/installed-packages.txt
+
+      - name: Record source generation and compilation actions
+        run: >-
+          bazel aquery ${{ matrix.bazel_args }} --lockfile_mode=error
+          'mnemonic("CppCompile|DebianProtoSources|SwigGen.*", deps(//:libdashapi_deb))'
+          --output=jsonproto > artifacts/validation/source-actions.json
+
+      - name: Collect source-built packages and provenance
         run: >-
           python3 bazel/ci/collect_artifacts.py
           --architecture '${{ matrix.architecture }}'
@@ -114,12 +131,13 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
 
-      - name: Upload validated import and consumer
+      - name: Upload runtime and matching debug packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sonic-dash-api-import-${{ matrix.arch }}-${{ github.sha }}
+          name: sonic-dash-api-packages-${{ matrix.arch }}-${{ github.sha }}
           path: |
-            artifacts/import/
+            artifacts/packages/
+            artifacts/development/
             artifacts/consumer/
             artifacts/provenance.json
           if-no-files-found: error

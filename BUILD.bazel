@@ -1,22 +1,200 @@
-_PREBUILT_REPOSITORIES = {
-    "@platforms//cpu:arm64": "@sonic_dash_api_prebuilt_arm64//:",
-    "@platforms//cpu:x86_64": "@sonic_dash_api_prebuilt_amd64//:",
-}
+load("@protobuf_debian//:defs.bzl", "cpp_proto_sources", "python_proto_sources")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+load("@sonic_build_infra//deb:sonic_deb.bzl", "sonic_deb")
+load("@sonic_build_infra//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 
-alias(
-    name = "dashapi",
-    actual = select({cpu: repository + "dashapi" for cpu, repository in _PREBUILT_REPOSITORIES.items()}),
-    visibility = ["//visibility:public"],
+package(default_visibility = ["//visibility:public"])
+
+_PROTOS = glob(["proto/*.proto"])
+
+exports_files(_PROTOS)
+
+cpp_proto_sources(
+    name = "cpp_generated",
+    srcs = _PROTOS,
+    output_prefix = "generated/dash_api",
+    strip_import_prefix = "proto",
 )
 
-alias(
-    name = "prebuilt_files",
-    actual = select({cpu: repository + "prebuilt_files" for cpu, repository in _PREBUILT_REPOSITORIES.items()}),
-    visibility = ["//visibility:public"],
+python_proto_sources(
+    name = "python_generated",
+    srcs = _PROTOS,
+    output_prefix = "generated/dash_api",
+    strip_import_prefix = "proto",
+)
+
+filegroup(
+    name = "proto_sources",
+    srcs = _PROTOS,
+)
+
+filegroup(
+    name = "generated_sources",
+    srcs = [":cpp_generated"],
+    output_group = "sources",
+)
+
+filegroup(
+    name = "proto_headers",
+    srcs = [":cpp_generated"],
+    output_group = "headers",
+)
+
+filegroup(
+    name = "proto_python",
+    srcs = [":python_generated"],
+    output_group = "python",
+)
+
+filegroup(
+    name = "proto_python_stubs",
+    srcs = [":python_generated"],
+    output_group = "pyi",
+)
+
+genrule(
+    name = "public_utils_header",
+    srcs = ["//misc:utils.h"],
+    outs = ["generated/dash_api/utils.h"],
+    cmd = "cp $(location //misc:utils.h) $@",
+)
+
+filegroup(
+    name = "generated_headers",
+    srcs = [
+        ":proto_headers",
+        ":public_utils_header",
+    ],
+)
+
+# Dynamic JSON conversion finds descriptors by name. Keep every proto's
+# registration code even when no consumer references its C++ message class.
+cc_library(
+    name = "dashapi_objects",
+    srcs = [
+        ":generated_sources",
+        "//misc:utils.cpp",
+    ],
+    hdrs = [
+        ":proto_headers",
+        "//misc:utils.h",
+    ],
+    copts = ["-std=c++14"],
+    includes = [
+        "generated/dash_api",
+        "misc",
+    ],
+    deps = ["@protobuf_debian//:libprotobuf"],
+    alwayslink = True,
+)
+
+cc_binary(
+    name = "libdashapi.so",
+    copts = ["-std=c++14"],
+    linkopts = [
+        "-Wl,-soname,libdashapi.so",
+        "-Wl,--build-id=sha1",
+    ],
+    linkshared = True,
+    linkstatic = True,
+    deps = [":dashapi_objects"],
+)
+
+cc_import(
+    name = "dashapi_dso",
+    shared_library = ":libdashapi.so",
+)
+
+cc_library(
+    name = "dashapi",
+    hdrs = [":generated_headers"],
+    includes = [
+        "generated",
+        "generated/dash_api",
+    ],
+    deps = [
+        ":dashapi_dso",
+        "@protobuf_debian//:libprotobuf",
+    ],
 )
 
 alias(
     name = "shared_library",
-    actual = select({cpu: repository + "shared_library" for cpu, repository in _PREBUILT_REPOSITORIES.items()}),
-    visibility = ["//bazel:__pkg__"],
+    actual = ":libdashapi.so",
+)
+
+# Match Make's installed paths. The package owns both its runtime ELF files and
+# the debug data split from those exact linked files.
+sonic_deploy_tar(
+    name = "libdashapi_pkg",
+    srcs = [
+        "generated/dash_api/{}{}".format(
+            f.removeprefix("proto/").removesuffix(".proto"),
+            suffix,
+        )
+        for f in _PROTOS
+        for suffix in [
+            ".pb.h",
+            "_pb2.py",
+            "_pb2.pyi",
+        ]
+    ] + [
+        ":public_utils_header",
+        "//misc:dash_api_utils",
+        "//misc:pypkg/dash_api/__init__.py",
+        "//misc:utils_python",
+    ],
+    binaries = {
+        "./usr/lib/libdashapi.so uid=0 gid=0 mode=0644 time=0 type=file": ":libdashapi.so",
+        "./usr/lib/python3/dist-packages/dash_api/_utils.so uid=0 gid=0 mode=0644 time=0 type=file": "//misc:_utils.so",
+    },
+    force_debug_build = True,
+    mtree = [
+        "./usr/include/dash_api/{0}.pb.h uid=0 gid=0 mode=0644 time=0 type=file content=$(location generated/dash_api/{0}.pb.h)".format(f.removeprefix("proto/").removesuffix(".proto"))
+        for f in _PROTOS
+    ] + [
+        "./usr/lib/python3/dist-packages/dash_api/{0}_pb2.{1} uid=0 gid=0 mode=0644 time=0 type=file content=$(location generated/dash_api/{0}_pb2.{1})".format(
+            f.removeprefix("proto/").removesuffix(".proto"),
+            ext,
+        )
+        for f in _PROTOS
+        for ext in [
+            "py",
+            "pyi",
+        ]
+    ] + [
+        "./usr/include/dash_api/utils.h uid=0 gid=0 mode=0644 time=0 type=file content=$(location :public_utils_header)",
+        "./usr/lib/python3/dist-packages/dash_api/__init__.py uid=0 gid=0 mode=0644 time=0 type=file content=$(location //misc:pypkg/dash_api/__init__.py)",
+        "./usr/lib/python3/dist-packages/dash_api/utils.py uid=0 gid=0 mode=0644 time=0 type=file content=$(location //misc:utils_python)",
+        "./usr/bin/dash_api_utils uid=0 gid=0 mode=0755 time=0 type=file content=$(location //misc:dash_api_utils)",
+    ],
+)
+
+sonic_deb(
+    name = "libdashapi_deb",
+    data = ":libdashapi_pkg",
+    depends = [
+        "libc6 (>= 2.38)",
+        "libgcc-s1",
+        "libstdc++6 (>= 14)",
+        "libprotobuf32t64 (>= 3.21.12)",
+        "python3 (>= 3.13)",
+        "python3 (<< 3.14)",
+        "python3-click",
+        "python3-protobuf",
+    ],
+    description = "DASH API definitions and C++/Python utilities for SONiC.",
+    maintainer = "SONiC <sonic-dev@lists.sonicfoundation.dev>",
+    package = "libdashapi",
+    version = "1.0.0",
+)
+
+sonic_deb(
+    name = "libdashapi_dbg_deb",
+    data = ":libdashapi_pkg.debug_symbols",
+    depends = ["libdashapi (= 1.0.0)"],
+    description = "Matching debug symbols for the SONiC DASH API.",
+    maintainer = "SONiC <sonic-dev@lists.sonicfoundation.dev>",
+    package = "libdashapi-dbg",
+    version = "1.0.0",
 )

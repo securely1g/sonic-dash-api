@@ -10,7 +10,7 @@
 
 int main(int argc, char **argv) {
     if (argc != 2) {
-        std::cerr << "expected the imported libdashapi path\n";
+        std::cerr << "expected the source-built libdashapi path\n";
         return 1;
     }
 
@@ -45,6 +45,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    std::cout << "validated the imported libdashapi C++ and C interfaces\n";
+    std::cout << "validated the source-built libdashapi C++ and C interfaces\n";
     return 0;
 }

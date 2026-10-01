@@ -1,31 +1,13 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//:sources.bzl", "PROTO_FILES")
+
+package(default_visibility = ["//visibility:public"])
 
 exports_files([
-    "BUILD.prebuilt.bazel",
-    "prebuilt.json",
+    "python_test.py",
+    "requirements_lock.txt",
 ])
-
-py_test(
-    name = "prebuilt_contract_test",
-    srcs = ["prebuilt_contract_test.py"],
-    args = [
-        "--manifest",
-        "$(rootpath :prebuilt.json)",
-        "--library",
-        "$(rootpath //:shared_library)",
-        "--architecture",
-    ] + select({
-        "@platforms//cpu:arm64": ["arm64"],
-        "@platforms//cpu:x86_64": ["amd64"],
-    }),
-    data = [
-        ":prebuilt.json",
-        "//:prebuilt_files",
-        "//:shared_library",
-    ],
-    visibility = ["//visibility:public"],
-)
 
 cc_test(
     name = "runtime_consumer_test",
@@ -35,11 +17,63 @@ cc_test(
     data = ["//:shared_library"],
     linkopts = ["-ldl"],
     linkstatic = False,
-    visibility = ["//visibility:public"],
+    deps = ["//:dashapi"],
+)
+
+cc_test(
+    name = "utils_test",
+    srcs = [
+        "utils_test_main.cpp",
+        "//misc:tests/utils_unittest.cpp",
+    ],
+    args = ["$(rootpath //:proto/types.proto)"],
+    copts = [
+        "-std=c++14",
+        '-DPROTO_PATH=\\"proto\\"',
+    ],
+    data = [
+        "//:proto/types.proto",
+        "//:proto_sources",
+    ],
+    # Debian's Boost meta-packages provide search paths and declared files;
+    # select the two libraries used by the existing Make test explicitly.
+    linkopts = [
+        "-lboost_filesystem",
+        "-lboost_system",
+    ],
+    linkstatic = False,
     deps = [
         "//:dashapi",
-        # This runtime dependency belongs only to the validation consumer.
-        # Production consumers continue to provide their selected protobuf.
-        "@dash_validation_debian//libprotobuf-dev:libprotobuf",
+        "@com_google_googletest//:gtest",
+        "@dash_test_debian//libboost-filesystem-dev:libboost-filesystem",
+        "@dash_test_debian//libboost-system-dev:libboost-system",
     ],
+)
+
+test_suite(
+    name = "python_test",
+    tests = ["//misc:python_test"],
+)
+
+py_test(
+    name = "source_contract_test",
+    srcs = ["source_contract_test.py"],
+    args = [
+        "--runtime-tar=$(rootpath //:libdashapi_pkg)",
+        "--debug-tar=$(rootpath //:libdashapi_pkg.debug_symbols)",
+        "--runtime-deb=$(rootpath //:libdashapi_deb)",
+        "--debug-deb=$(rootpath //:libdashapi_dbg_deb)",
+        "--library=$(rootpath //:shared_library)",
+    ] + ["--proto=$(rootpath //:{})".format(f) for f in PROTO_FILES] + select({
+        "@platforms//cpu:arm64": ["--architecture=arm64"],
+        "@platforms//cpu:x86_64": ["--architecture=amd64"],
+    }),
+    data = [
+        "//:libdashapi_dbg_deb",
+        "//:libdashapi_deb",
+        "//:libdashapi_pkg",
+        "//:libdashapi_pkg.debug_symbols",
+        "//:proto_sources",
+        "//:shared_library",
+    ] + ["//:" + f for f in PROTO_FILES],
 )

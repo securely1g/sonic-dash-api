@@ -1,5 +1,5 @@
-# The registry revision provides the existing infrastructure 0.0.7 dependency.
-common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/07fef5a97beabe9d4b5a3f39e81b28a4e28a2497
+# Registry entries pin the shared build tools and matching protobuf compiler/runtime.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/963ff1bf04570b5acefe52fc5d6a516b40b4fd8d
 common --registry=https://bcr.bazel.build/
 
 # Run in native Debian Trixie with matching execution and target architectures.
@@ -7,3 +7,6 @@ common --platforms=@sonic_build_infra//platforms:x86_64_trixie
 common --host_platform=@sonic_build_infra//platforms:x86_64_trixie
 common:aarch64 --platforms=@sonic_build_infra//platforms:aarch64_trixie
 common:aarch64 --host_platform=@sonic_build_infra//platforms:aarch64_trixie
+
+# Match the legacy optimized build; deploy targets retain and split DWARF.
+build --compilation_mode=opt

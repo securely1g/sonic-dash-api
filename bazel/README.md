@@ -1,90 +1,92 @@
-# Bazel prebuilt C++ interface
+# Bazel source build
 
-The Bazel module exposes the existing Trixie `libdashapi` packages as a
-dependency-owned C++ interface. It does not compile protobuf sources or replace
-the Make build. `prebuilt.json` records the AMD64 and ARM64 package hashes and
-their Azure build, artifact, member, and producer source revision. Both packages
-come from build `1231190` at source
-`2ce7ce648ee77a76fcf567191eb4b9ed6cfeed38`.
+Bazel generates the C++ and Python bindings from every `proto/*.proto`, compiles
+`misc/utils.cpp`, and generates and compiles the SWIG Python extension. The
+build uses the shared SONiC GCC toolchain and the matching Debian Protobuf
+3.21.12 compiler and `libprotobuf.so.32` runtime. DASH artifacts are produced
+from this checkout; no Azure DASH package is downloaded.
 
-The module extension downloads the recorded artifact ZIP, accepts only the DEB
-member with the pinned SHA-256, and extracts that package with Bazel's repository
-APIs. Other ZIP contents do not contribute to the repository. A missing artifact
-or changed package fails the fetch; the module does not select a replacement.
+## Supported configurations
 
-## Targets
-
-- `@sonic_dash_api//:dashapi` provides all `dash_api/*.h` headers and the existing
-  `libdashapi.so`. It preserves the `dash_api/...` include root and imports the
-  shared library without changing its bytes or adding a SONAME. The interface
-  does not add protobuf dependencies; consumers provide their selected matching
-  protobuf headers and runtime, as SWSS does today.
-- `@sonic_dash_api//:prebuilt_files` exposes the selected input DEB, imported C++
-  files, and `IMPORTS.json` for validation and artifact retention. This is the
-  original input package, not a package produced by Bazel.
-
-The target selects AMD64 or ARM64 from the target CPU and is limited to Linux.
-The validated configurations use native Debian Trixie execution and target
-architectures with Bazel 8.5.1. Cross execution and other distributions are
-outside this import's validation.
-
-## Validation
-
-The repository's `Bazel` GitHub Actions workflow runs for pull requests targeting
-`master`, pushes to `master`, and manual dispatch. `Bazel (AMD64)` uses
-`ubuntu-24.04`; `Bazel (ARM64)` uses `ubuntu-24.04-arm`. Each job runs in the
-same pinned multiarchitecture Debian Trixie image, checks both the runner CPU
-and container architecture, and installs a checksum-verified Bazel 8.5.1 binary.
-The registry revision in `.bazelrc` supplies the existing infrastructure 0.0.7
-dependency. `MODULE.bazel.lock` records the resolved graph; CI uses
-`--lockfile_mode=error` to reject unreviewed resolution changes.
-
-On a matching native Trixie machine, run:
+The source workflow builds natively on AMD64 and ARM64 in a pinned Debian Trixie
+container, using Bazel 8.5.1 and Python 3.13. The existing Make/Azure path covers
+other configurations, including ARMHF and Bookworm; those configurations have
+not been validated by this Bazel change.
 
 ```sh
-# For ARM64, add --config=aarch64 to each Bazel command below.
-bazel build --lockfile_mode=error //:prebuilt_files //bazel:runtime_consumer_test
-bazel test --lockfile_mode=error --nocache_test_results --test_output=errors \
-  //bazel:prebuilt_contract_test //bazel:runtime_consumer_test
+# Run inside native Debian Trixie. Add --config=aarch64 on ARM64.
+bazel build --lockfile_mode=error //:libdashapi_deb //:libdashapi_dbg_deb
+bazel test --lockfile_mode=error --test_output=errors \
+  //bazel:utils_test //bazel:python_test \
+  //bazel:runtime_consumer_test //bazel:source_contract_test
 ```
 
-`//bazel:prebuilt_contract_test` verifies the selected package hash and control
-identity, compares every exported header and library byte with the DEB payload,
-and checks the ELF architecture, absent SONAME, and `libprotobuf.so.32` runtime
-dependency. It uses `dpkg-deb` and `readelf` from the native Trixie test image.
+CI installs package inspection tools (`binutils`, `dpkg-deb`, and `gdb`).
+Protobuf and SWIG generation use declared Bazel execution tools. Protobuf's
+compiler, runtime libraries and well-known schema inputs come from shared
+`sonic-build-infra` build tools, and its reusable generation rules and target
+library interface are owned by the registry's `protobuf-debian` module.
 
-`//bazel:runtime_consumer_test` compiles against `utils.h`, links the imported
-library, exercises its C++ and C table-name APIs and protobuf JSON conversion,
-and confirms that the loaded file is the selected import. Its test-only Debian
-dependency set uses infrastructure 0.0.7's pinned Trixie suites and the existing
-Distroless `libprotobuf-dev:libprotobuf` C++ target. Production consumers retain
-their own protobuf dependency selection.
+`MODULE.bazel.lock` records dependency-resolution information; CI uses
+`--lockfile_mode=error` to reject missing or stale entries. Regenerate the lock
+with Bazel's default update mode when changing declared dependencies, validate
+both native configurations, and commit the resulting lockfile with the change.
 
-Registry CI resolves the immutable module source, fetches the recorded package
-for each native architecture, builds `prebuilt_files` and the runtime consumer,
-and runs both tests. It needs no local package manifest or registry runner setup
-hook. The downstream SWSS build separately validates the generated headers and
-linkage with its current protobuf path.
+## Targets and outputs
 
-### CI artifacts and required checks
+| Target | Output |
+| --- | --- |
+| `//:dashapi` | Public C++ headers under `dash_api/` and the source-built shared library |
+| `//:shared_library` | Linked `libdashapi.so` for consumers and inspection |
+| `//misc:dash_api` | Generated Python modules and SWIG extension for Bazel consumers |
+| `//:libdashapi_pkg` | Runtime/install tar, preserving Make's installed paths |
+| `//:libdashapi_pkg.debug_symbols` | Detached symbols matched to the packaged library and Python extension |
+| `//:libdashapi_deb` | `libdashapi_1.0.0_<architecture>.deb` |
+| `//:libdashapi_dbg_deb` | `libdashapi-dbg_1.0.0_<architecture>.deb` |
 
-Both native jobs explicitly build the import and consumer and execute both
-tests with result caching disabled. CI installs inspection/build tools only;
-the consumer gets protobuf through its declared Bazel dependency. The two
-native job checks are required on `master`.
+The runtime package contains the generated C++ headers and `utils.h` under
+`/usr/include/dash_api`, `libdashapi.so` under `/usr/lib`, generated Python
+modules and typing stubs plus `utils.py` and `_utils.so` under
+`/usr/lib/python3/dist-packages/dash_api`, and `/usr/bin/dash_api_utils`.
 
-Open a successful run under **Actions → Bazel** and find its **Artifacts**:
+The library declares `libdashapi.so` as its SONAME so dynamic consumers record
+the installed filename. All generated protobuf descriptors are retained during
+linking, including messages referenced only by dynamic JSON conversion. The
+Python extension resolves Python symbols from its interpreter without an
+explicit `libpython` dependency, matching the existing build's behavior.
 
-- `sonic-dash-api-import-<architecture>-<revision>` retains the original input
-  DEB, `IMPORTS.json`, exported headers/library, compiled validation consumer,
-  and a SHA-256 inventory in `provenance.json`. The consumer binary is a test
-  output; run it through Bazel to obtain its declared runtime dependencies.
-- `sonic-dash-api-validation-<architecture>-<revision>` retains build/test events,
-  both test logs and XML results, host package information, committed Bazel
-  declarations, and the fetched infrastructure module declaration. Collection
-  rejects missing required files and a mismatched infrastructure version.
+`sonic_deploy_tar(force_debug_build = True)` splits each packaged ELF into its
+stripped runtime copy and detached symbols from the same linked file. Symbols
+are installed under `/usr/lib/debug/.build-id`. The runtime tar carries
+`DebugSymbolsInfo` for the shared container debug-layer collector. A downstream
+debug image can collect these symbols while extending its matching runtime
+image; this repository does not build a container image.
 
-These checks validate the pinned prebuilt import and native consumer. They do
-not compile the DASH protobuf sources, produce a new Debian package, or claim
-debug-symbol coverage. Registry CI remains a separate external-consumer check;
-its results do not replace these checks on this repository's pull requests.
+## Tests and CI artifacts
+
+- `utils_test` runs the existing five C++ utility tests.
+- `python_test` imports every generated Python schema, checks typing stubs and
+  protobuf optional/timestamp behavior, and runs the existing CLI roundtrip test.
+- `runtime_consumer_test` exercises C++ and C APIs and verifies the process loads
+  the selected source-built library.
+- `source_contract_test` compares the complete installed inventory with the
+  schema inputs, checks runtime and Debian payload equality, architecture,
+  SONAME and dependencies, and validates both runtime/debug pairs with build IDs,
+  debug-link checksums and GDB source-line lookup.
+- CI also installs the generated Debian packages with their declared runtime
+  dependencies. `bazel/installed_package_test.py` then checks C API, Python/SWIG,
+  and installed CLI roundtrips using system Python, without Bazel runfiles or
+  custom library search paths.
+
+The required source checks are `Bazel (AMD64)` and `Bazel (ARM64)`. Open a
+successful run under **Actions → Bazel** and download its **Artifacts**:
+
+- `sonic-dash-api-packages-<architecture>-<revision>` contains runtime/debug
+  Debian packages and tar archives, headers, the linked library, a compiled
+  consumer, and SHA-256 provenance.
+- `sonic-dash-api-validation-<architecture>-<revision>` contains test results,
+  build events, source action records, environment information and declarations.
+
+Build/test evidence identifies the tested commit and architecture. The package
+inspection verifies symbols for DASH's two ELF outputs; third-party runtime
+libraries retain their own separate symbol-package requirements.

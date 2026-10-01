@@ -2,8 +2,8 @@
 
 This repository hosts the DASH API definition for the SONiC project. The schema of DASH APP DB is at [DASH APP DB](https://github.com/sonic-net/DASH/blob/main/documentation/general/dash-sonic-hld.md#32-dash-app-db) and all entries of DASH APP DB will be encoded as protobuf.
 
-The [Bazel prebuilt C++ interface](bazel/README.md) exposes the pinned Trixie
-`libdashapi` packages to Bazel consumers.
+The [Bazel source build](bazel/README.md) generates C++ and Python bindings and
+builds native Trixie runtime and debug packages for AMD64 and ARM64.
 
 ## Protobuf Convention
 
