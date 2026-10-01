@@ -578,7 +578,7 @@
     "@@rules_distroless+//apt:extensions.bzl%apt": {
       "general": {
         "bzlTransitiveDigest": "bggdCB0Q/L26epylpBHdczV9U0LMWmOYS0Zs2O7hPbo=",
-        "usagesDigest": "HElGSMiLYXuBHYFWnGxF8E7U/8ytsS0fTtGZIu1Wh/c=",
+        "usagesDigest": "CKnQ0Pzbjzmzw3jME+ZKAU0GSkjuRobXs/FvMZj5+a4=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -18527,7 +18527,7 @@
     "@@sonic-build-infra+//toolchains/gcc:extensions.bzl%gcc": {
       "general": {
         "bzlTransitiveDigest": "COgOGOKVkOllyB/jGCJMGM+gVi0/6BxdYnsibHFx1ho=",
-        "usagesDigest": "1GJ2t1LPEYC1hqVmtQwXd6Zi/HOONZB0IPSoUnTqNSc=",
+        "usagesDigest": "Zhv1cysEHZZ+s+eTc1yKhrKLwHQBlcmzyPsZi87illQ=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
