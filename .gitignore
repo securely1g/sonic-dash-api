@@ -8,3 +8,7 @@ debian/debhelper-build-stamp
 debian/files
 debian/libdashapi.substvars
 debian/libdashapi
+
+# Standalone Bazel validation outputs.
+/bazel-*
+/artifacts/
