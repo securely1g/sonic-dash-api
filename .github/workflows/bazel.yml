@@ -71,6 +71,12 @@ jobs:
           cp /etc/os-release artifacts/validation/os-release
           dpkg-query -W -f='${binary:Package}\t${Version}\n' > artifacts/validation/host-packages.txt
 
+      - name: Verify the checkout has no committed dependency lock
+        run: |
+          test ! -e MODULE.bazel.lock
+          test -z "$(git ls-files -- MODULE.bazel.lock)"
+          git check-ignore --quiet --no-index MODULE.bazel.lock
+
       - name: Install pinned Bazel
         run: |
           test "$(cat .bazelversion)" = 8.5.1
@@ -81,18 +87,18 @@ jobs:
 
       - name: Check Bazel formatting
         run: >-
-          bazel run ${{ matrix.bazel_args }} --lockfile_mode=error
+          bazel run ${{ matrix.bazel_args }} --lockfile_mode=update
           @buildifier_prebuilt//:buildifier -- -mode=check -r "$GITHUB_WORKSPACE"
 
       - name: Build DASH from source and package its runtime and symbols
         run: >-
-          bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=error
+          bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-events.json"
           //:libdashapi_deb //:libdashapi_dbg_deb //bazel:runtime_consumer_test
 
       - name: Run C++, Python, runtime and package tests
         run: >-
-          bazel test ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=error
+          bazel test ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
           --nocache_test_results --test_output=errors
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/test-events.json"
           //bazel:source_contract_test //bazel:runtime_consumer_test
@@ -111,7 +117,7 @@ jobs:
 
       - name: Record source generation and compilation actions
         run: >-
-          bazel aquery ${{ matrix.bazel_args }} --lockfile_mode=error
+          bazel aquery ${{ matrix.bazel_args }} --lockfile_mode=update
           'mnemonic("CppCompile|DebianProtoSources|SwigGen.*", deps(//:libdashapi_deb))'
           --output=jsonproto > artifacts/validation/source-actions.json
 
@@ -121,6 +127,12 @@ jobs:
           --architecture '${{ matrix.architecture }}'
           --bazel-config '${{ matrix.bazel_config }}'
           --image "$CI_IMAGE" --output-dir artifacts
+
+      - name: Verify generated dependency resolution leaves tracked files clean
+        run: |
+          test -s MODULE.bazel.lock
+          git check-ignore --quiet MODULE.bazel.lock
+          test -z "$(git status --porcelain --untracked-files=no)"
 
       - name: Upload validation evidence
         if: always()

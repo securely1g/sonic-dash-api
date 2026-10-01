@@ -22,7 +22,7 @@ TESTS = {
     "//bazel:python_test": "misc/python_test",
 }
 DECLARATIONS = (
-    ".bazelversion", ".bazelrc", "MODULE.bazel", "MODULE.bazel.lock",
+    ".bazelversion", ".bazelrc", "MODULE.bazel",
     "BUILD.bazel", "sources.bzl", "bazel/BUILD.bazel", "misc/BUILD.bazel", "Makefile",
     "debian/control", "debian/changelog",
 )
@@ -71,7 +71,7 @@ def main() -> None:
     repo = Path(__file__).resolve().parents[2]
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for owned in ("provenance.json", "packages", "development", "consumer", "validation/tests", "validation/declarations"):
+    for owned in ("provenance.json", "packages", "development", "consumer", "validation/tests", "validation/declarations", "validation/generated"):
         require(not (output / owned).exists(), "output already contains a previous collection: " + owned)
 
     machine = {"amd64": "x86_64", "arm64": "aarch64"}[args.architecture]
@@ -80,7 +80,7 @@ def main() -> None:
     os_release = dict(line.split("=", 1) for line in Path("/etc/os-release").read_text().splitlines() if "=" in line)
     require(os_release.get("VERSION_CODENAME", "").strip('"') == "trixie", "validation requires native Debian Trixie")
 
-    options = ["--lockfile_mode=error"]
+    options = ["--lockfile_mode=update"]
     if args.bazel_config and args.bazel_config != "default":
         options.append("--config=" + args.bazel_config)
 
@@ -155,6 +155,15 @@ def main() -> None:
     require(module_version(fetched_module.read_text(), "module") == declared_version, "resolved infrastructure version differs from the declaration")
     retain(fetched_module, "validation/declarations/resolved-sonic-build-infra.MODULE.bazel")
 
+    # This is generated evidence from this native build, not a source input.
+    lockfile = repo / "MODULE.bazel.lock"
+    require(not run(repo, "git", "ls-files", "--", lockfile.name), "dependency lock must not be tracked")
+    run(repo, "git", "check-ignore", "--quiet", lockfile.name)
+    require(lockfile.is_file(), "Bazel did not generate a dependency lock")
+    require(isinstance(json.loads(lockfile.read_text()).get("lockFileVersion"), int), "generated dependency lock has no format version")
+    generated_lock = "validation/generated/MODULE.bazel.lock"
+    retain(lockfile, generated_lock)
+
     inventory = {
         path.relative_to(output).as_posix(): {"sha256": sha256(path), "bytes": path.stat().st_size}
         for path in sorted(output.rglob("*")) if path.is_file()
@@ -187,6 +196,11 @@ def main() -> None:
             "version": declared_version,
             "canonical_repository": canonical,
             "module_sha256": sha256(fetched_module),
+        },
+        "dependency_resolution": {
+            "lockfile_mode": "update",
+            "generated_lockfile": generated_lock,
+            "lockfile_tracked": False,
         },
         "tests": list(TESTS),
         "files": inventory,

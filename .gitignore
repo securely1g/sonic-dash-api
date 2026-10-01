@@ -12,3 +12,5 @@ debian/libdashapi
 # Standalone Bazel validation outputs.
 /bazel-*
 /artifacts/
+# Bazel regenerates dependency resolution; CI retains it as build evidence.
+/MODULE.bazel.lock

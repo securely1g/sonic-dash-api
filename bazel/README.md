@@ -6,10 +6,10 @@ build uses the shared SONiC GCC toolchain and the matching Debian Protobuf
 3.21.12 compiler and `libprotobuf.so.32` runtime. DASH artifacts are produced
 from this checkout; no Azure DASH package is downloaded.
 
-The source-build module starts at version `0.0.1`, so its registry versions
-sort after the historical `0.0.0-<commit>` prebuilt imports independently of
-Git commit hash ordering. This module version is separate from the Debian
-package version.
+The source-build module uses version `0.0.2`, so its registry versions sort after
+the earlier `0.0.1-<commit>` source builds and historical `0.0.0-<commit>` prebuilt
+imports independently of Git commit hash ordering. This module version is
+separate from the Debian package version.
 
 ## Supported configurations
 
@@ -20,8 +20,8 @@ not been validated by this Bazel change.
 
 ```sh
 # Run inside native Debian Trixie. Add --config=aarch64 on ARM64.
-bazel build --lockfile_mode=error //:libdashapi_deb //:libdashapi_dbg_deb
-bazel test --lockfile_mode=error --test_output=errors \
+bazel build //:libdashapi_deb //:libdashapi_dbg_deb
+bazel test --test_output=errors \
   //bazel:utils_test //bazel:python_test \
   //bazel:runtime_consumer_test //bazel:source_contract_test
 ```
@@ -32,10 +32,14 @@ compiler, runtime libraries and well-known schema inputs come from shared
 `sonic-build-infra` build tools, and its reusable generation rules and target
 library interface are owned by the registry's `protobuf-debian` module.
 
-`MODULE.bazel.lock` records dependency-resolution information; CI uses
-`--lockfile_mode=error` to reject missing or stale entries. Regenerate the lock
-with Bazel's default update mode when changing declared dependencies, validate
-both native configurations, and commit the resulting lockfile with the change.
+`MODULE.bazel.lock` is generated locally and ignored by Git. A fresh checkout
+does not need it: Bazel's default update mode resolves the declared dependencies
+and creates the file. CI explicitly uses `--lockfile_mode=update`, checks that
+the tracked checkout stays clean, and retains each architecture's generated
+lock under `validation/generated/MODULE.bazel.lock` in its validation artifact.
+Do not commit this generated file. Keep dependency versions, registry revisions,
+source integrity values and Debian snapshot declarations pinned in their owning
+modules; changing lockfile handling does not change those declared inputs.
 
 ## Targets and outputs
 
@@ -90,7 +94,8 @@ successful run under **Actions → Bazel** and download its **Artifacts**:
   Debian packages and tar archives, headers, the linked library, a compiled
   consumer, and SHA-256 provenance.
 - `sonic-dash-api-validation-<architecture>-<revision>` contains test results,
-  build events, source action records, environment information and declarations.
+  build events, source action records, environment information, declarations,
+  and the generated dependency lock used by that native build.
 
 Build/test evidence identifies the tested commit and architecture. The package
 inspection verifies symbols for DASH's two ELF outputs; third-party runtime
