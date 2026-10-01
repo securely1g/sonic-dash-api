@@ -38,8 +38,8 @@ outside this import's validation.
 
 ## Validation
 
-The repository's `Bazel` GitHub Actions workflow runs for pull requests targeting
-`master`, pushes to `master`, and manual dispatch. `Bazel (AMD64)` uses
+The repository's `Bazel` GitHub Actions workflow runs for all pull requests,
+including stacked PRs, pushes to `master`, and manual dispatch. `Bazel (AMD64)` uses
 `ubuntu-24.04`; `Bazel (ARM64)` uses `ubuntu-24.04-arm`. Each job runs in the
 same pinned multiarchitecture Debian Trixie image, checks both the runner CPU
 and container architecture, and installs a checksum-verified Bazel 8.5.1 binary.
@@ -51,7 +51,7 @@ On a matching native Trixie machine, run:
 
 ```sh
 # For ARM64, add --config=aarch64 to each Bazel command below.
-bazel build --lockfile_mode=error //:prebuilt_files //bazel:runtime_consumer_test
+bazel build --lockfile_mode=error //:prebuilt_files //:libdashapi_pkg //bazel:runtime_consumer_test
 bazel test --lockfile_mode=error --nocache_test_results --test_output=errors \
   //bazel:prebuilt_contract_test //bazel:runtime_consumer_test
 ```
@@ -78,15 +78,15 @@ linkage with its current protobuf path.
 
 ### CI artifacts and required checks
 
-Both native jobs explicitly build the import and consumer and execute both
+Both native jobs explicitly build the import, runtime tar and consumer and execute both
 tests with result caching disabled. CI installs inspection/build tools only;
 the consumer gets protobuf through its declared Bazel dependency. The two
-native job checks are required on `master`.
+native job checks are required on `master` and this PR's stacked base branch.
 
 Open a successful run under **Actions → Bazel** and find its **Artifacts**:
 
 - `sonic-dash-api-import-<architecture>-<revision>` retains the original input
-  DEB, `IMPORTS.json`, exported headers/library, compiled validation consumer,
+  DEB, `IMPORTS.json`, exported headers/library, runtime tar, compiled validation consumer,
   and a SHA-256 inventory in `provenance.json`. The consumer binary is a test
   output; run it through Bazel to obtain its declared runtime dependencies.
 - `sonic-dash-api-validation-<architecture>-<revision>` retains build/test events,
@@ -94,7 +94,7 @@ Open a successful run under **Actions → Bazel** and find its **Artifacts**:
   declarations, and the fetched infrastructure module declaration. Collection
   rejects missing required files and a mismatched infrastructure version.
 
-These checks validate the pinned prebuilt import and native consumer. They do
+These checks validate the pinned prebuilt import, runtime tar and native consumer. They do
 not compile the DASH protobuf sources, produce a new Debian package, or claim
 debug-symbol coverage. Registry CI remains a separate external-consumer check;
 its results do not replace these checks on this repository's pull requests.

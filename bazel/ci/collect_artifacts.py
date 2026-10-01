@@ -55,7 +55,7 @@ def main() -> None:
     repo = Path(__file__).resolve().parents[2]
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for owned in ("provenance.json", "import", "consumer", "validation/tests", "validation/declarations"):
+    for owned in ("provenance.json", "import", "consumer", "runtime", "validation/tests", "validation/declarations"):
         require(not (output / owned).exists(), "output already contains a previous collection: " + owned)
 
     machine = {"amd64": "x86_64", "arm64": "aarch64"}[args.architecture]
@@ -116,6 +116,10 @@ def main() -> None:
     require(re.search(r"Machine:\s+" + re.escape(elf_machine) + r"\s*$", elf_header, re.MULTILINE) is not None, "compiled consumer is not native to the selected architecture")
     retain(consumers[0], "consumer/runtime_consumer_test")
 
+    packages = files("//:libdashapi_pkg")
+    require(len(packages) == 1, "expected one validated DASH runtime tar")
+    retain(packages[0], "runtime/libdashapi.tar")
+
     for test in TESTS:
         directory = testlogs / "bazel" / test
         result = ET.parse(directory / "test.xml").getroot()
@@ -140,7 +144,7 @@ def main() -> None:
     }
     provenance = {
         "schema_version": 1,
-        "scope": "Pinned prebuilt C++ import and native consumer; the retained DEB is an input package, not a Bazel-produced package. Debug symbols and protobuf source compilation are outside this validation.",
+        "scope": "Pinned prebuilt C++ import, Bazel runtime tar and native consumer; the retained DEB is an input package, not a Bazel-produced DEB. Debug symbols and protobuf source compilation are outside this validation.",
         "source": {
             "revision": run(repo, "git", "rev-parse", "HEAD"),
             "tree": run(repo, "git", "rev-parse", "HEAD^{tree}"),

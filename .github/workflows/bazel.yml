@@ -2,7 +2,6 @@ name: Bazel
 
 on:
   pull_request:
-    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -85,11 +84,11 @@ jobs:
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=error
           @buildifier_prebuilt//:buildifier -- -mode=check -r "$GITHUB_WORKSPACE"
 
-      - name: Build the import and native consumer
+      - name: Build the import, runtime package and native consumer
         run: >-
           bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=error
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-events.json"
-          //:prebuilt_files //bazel:runtime_consumer_test
+          //:prebuilt_files //:libdashapi_pkg //bazel:runtime_consumer_test
 
       - name: Run import and runtime tests
         run: >-
@@ -121,5 +120,6 @@ jobs:
           path: |
             artifacts/import/
             artifacts/consumer/
+            artifacts/runtime/
             artifacts/provenance.json
           if-no-files-found: error
