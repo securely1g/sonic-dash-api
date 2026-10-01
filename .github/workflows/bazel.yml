@@ -40,17 +40,35 @@ jobs:
     runs-on: ${{ matrix.runner }}
     container:
       # This immutable multiarchitecture manifest selects the native image.
-      image: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+      image: debian:trixie-20260713@sha256:fac46bff2e02f51425b6e33b0e1169f55dfb053d83511ca28aa50c09fd5ed7a4
       options: --init
     defaults:
       run:
         shell: bash
     env:
       DEBIAN_FRONTEND: noninteractive
-      CI_IMAGE: debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+      CI_IMAGE: debian:trixie-20260713@sha256:fac46bff2e02f51425b6e33b0e1169f55dfb053d83511ca28aa50c09fd5ed7a4
     steps:
       - name: Install build and package inspection tools
         run: |
+          # Match the pinned sonic-build-infra APT snapshots. HTTP bootstraps
+          # ca-certificates; APT still verifies Debian's signed Release files.
+          rm -f /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources
+          cat > /etc/apt/sources.list.d/debian.sources <<'EOF'
+          Types: deb
+          URIs: http://snapshot.debian.org/archive/debian/20260727T143429Z/
+          Suites: trixie trixie-updates
+          Components: main
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          Check-Valid-Until: no
+
+          Types: deb
+          URIs: http://snapshot.debian.org/archive/debian-security/20260726T121236Z/
+          Suites: trixie-security
+          Components: main
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          Check-Valid-Until: no
+          EOF
           apt-get update
           apt-get install -y --no-install-recommends \
             binutils build-essential ca-certificates curl gdb git python3 tar xz-utils
@@ -69,6 +87,8 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           mkdir -p artifacts/validation
           cp /etc/os-release artifacts/validation/os-release
+          cp /etc/apt/sources.list.d/debian.sources artifacts/validation/apt-sources.sources
+          apt-cache policy > artifacts/validation/apt-policy.txt
           dpkg-query -W -f='${binary:Package}\t${Version}\n' > artifacts/validation/host-packages.txt
 
       - name: Verify the checkout has no committed dependency lock
@@ -114,6 +134,8 @@ jobs:
             2>&1 | tee artifacts/validation/installed-package-test.log
           dpkg-query -W -f='${binary:Package}\t${Version}\n' \
             > artifacts/validation/installed-packages.txt
+          apt-cache policy libprotobuf32t64 python3-protobuf \
+            > artifacts/validation/installed-runtime-policy.txt
 
       - name: Record source generation and compilation actions
         run: >-

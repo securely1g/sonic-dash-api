@@ -6,8 +6,8 @@ build uses the shared SONiC GCC toolchain and the matching Debian Protobuf
 3.21.12 compiler and `libprotobuf.so.32` runtime. DASH artifacts are produced
 from this checkout; no Azure DASH package is downloaded.
 
-The source-build module uses version `0.0.2`, so its registry versions sort after
-the earlier `0.0.1-<commit>` source builds and historical `0.0.0-<commit>` prebuilt
+The source-build module uses version `0.0.3`, so its registry versions sort after
+the earlier source builds and historical `0.0.0-<commit>` prebuilt
 imports independently of Git commit hash ordering. This module version is
 separate from the Debian package version.
 
@@ -31,6 +31,34 @@ Protobuf and SWIG generation use declared Bazel execution tools. Protobuf's
 compiler, runtime libraries and well-known schema inputs come from shared
 `sonic-build-infra` build tools, and its reusable generation rules and target
 library interface are owned by the registry's `protobuf-debian` module.
+
+## Declared external dependencies
+
+DASH's own generated code, library and bindings are compiled from source.
+Declared, pinned APT packages and wheels intentionally supply external
+dependencies. Libraries linked into DASH or its tests use the target
+configuration; programs run during generation are selected with `cfg = "exec"`.
+
+| Dependency | Version and source | Use |
+| --- | --- | --- |
+| Protobuf compiler and schema inputs | Debian Protobuf 3.21.12 from shared snapshot-backed build tools | Execution-side code generation |
+| C++ Protobuf headers and runtime | Debian Protobuf 3.21.12 through `protobuf-debian` | Target C++ library, `libprotobuf.so.32` |
+| Boost Filesystem and System | Debian Boost 1.83 | Target libraries for the existing utility tests |
+| SWIG | SWIG 4.3.0 through shared rules: BCR `4.3.0.bcr.2` executable and Debian support files | Execution-side Python wrapper generation |
+| Python Protobuf for Bazel | Hash-pinned PyPI `protobuf==6.33.5`, including its native extension | Bazel Python consumers and tests |
+| Python Protobuf for installed packages | Declared Debian `python3-protobuf` dependency, version 3.21.12 from the CI snapshot | System Python installation tests |
+
+CI uses the digest-pinned Debian Trixie image dated `20260713`, which predates
+the package snapshots. Its inspection tools and installed-package dependencies
+use the same fixed Debian snapshots as the pinned infrastructure:
+`20260727T143429Z` for Debian
+and `20260726T121236Z` for Debian Security. APT retains signature verification;
+snapshot entries disable only the expired Release-file validity window. The
+validation artifact records the actual APT sources, package policy and installed
+package versions. Rebuilding these external dependencies from source is outside
+this component migration's scope.
+
+## Generated dependency lock
 
 `MODULE.bazel.lock` is generated locally and ignored by Git. A fresh checkout
 does not need it: Bazel's default update mode resolves the declared dependencies
@@ -94,7 +122,7 @@ successful run under **Actions → Bazel** and download its **Artifacts**:
   Debian packages and tar archives, headers, the linked library, a compiled
   consumer, and SHA-256 provenance.
 - `sonic-dash-api-validation-<architecture>-<revision>` contains test results,
-  build events, source action records, environment information, declarations,
+  build events, source action records, environment and APT inputs, declarations,
   and the generated dependency lock used by that native build.
 
 Build/test evidence identifies the tested commit and architecture. The package
