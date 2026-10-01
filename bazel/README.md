@@ -6,6 +6,11 @@ build uses the shared SONiC GCC toolchain and the matching Debian Protobuf
 3.21.12 compiler and `libprotobuf.so.32` runtime. DASH artifacts are produced
 from this checkout; no Azure DASH package is downloaded.
 
+The source-build module starts at version `0.0.1`, so its registry versions
+sort after the historical `0.0.0-<commit>` prebuilt imports independently of
+Git commit hash ordering. This module version is separate from the Debian
+package version.
+
 ## Supported configurations
 
 The source workflow builds natively on AMD64 and ARM64 in a pinned Debian Trixie

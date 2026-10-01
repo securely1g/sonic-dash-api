@@ -41,6 +41,7 @@ def inventory(archive: tarfile.TarFile) -> dict[str, tuple[bytes, int]]:
     for member in archive:
         name = PurePosixPath(member.name)
         require(not name.is_absolute() and ".." not in name.parts, "unsafe archive path: " + member.name)
+        require(member.uid == member.gid == 0, "installed archive member is not owned by root: " + member.name)
         if member.isdir():
             continue
         require(member.isfile(), "unexpected non-regular installed file: " + member.name)
@@ -148,7 +149,9 @@ def main() -> None:
     require(set(runtime) == expected, "runtime install inventory mismatch; missing=" + str(sorted(expected - set(runtime))) + "; unexpected=" + str(sorted(set(runtime) - expected)))
     require(runtime == deb_inventory(args.runtime_deb), "runtime DEB payload differs from its deploy tar")
     require(debug == deb_inventory(args.debug_deb), "debug DEB payload differs from its symbols tar")
-    require(runtime["usr/bin/dash_api_utils"][1] & 0o111 != 0, "installed CLI is not executable")
+    for path, (_, mode) in runtime.items():
+        expected_mode = 0o755 if path == "usr/bin/dash_api_utils" else 0o644
+        require(mode == expected_mode, "unexpected installed file mode: " + path + " " + oct(mode))
     require(all(not path.endswith(".debug") for path in runtime), "debug files leaked into the runtime package")
 
     runtime_fields = package_fields(args.runtime_deb)
