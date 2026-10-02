@@ -61,16 +61,12 @@ py_test(
     args = [
         "--runtime-tar=$(rootpath //:libdashapi_pkg)",
         "--debug-tar=$(rootpath //:libdashapi_pkg.debug_symbols)",
-        "--runtime-deb=$(rootpath //:libdashapi_deb)",
-        "--debug-deb=$(rootpath //:libdashapi_dbg_deb)",
         "--library=$(rootpath //:shared_library)",
     ] + ["--proto=$(rootpath //:{})".format(f) for f in PROTO_FILES] + select({
         "@platforms//cpu:arm64": ["--architecture=arm64"],
         "@platforms//cpu:x86_64": ["--architecture=amd64"],
     }),
     data = [
-        "//:libdashapi_dbg_deb",
-        "//:libdashapi_deb",
         "//:libdashapi_pkg",
         "//:libdashapi_pkg.debug_symbols",
         "//:proto_sources",

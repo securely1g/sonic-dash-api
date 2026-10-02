@@ -8,8 +8,7 @@ from this checkout; no Azure DASH package is downloaded.
 
 The source-build module uses version `0.0.4`, so its registry versions sort after
 the earlier source builds and historical `0.0.0-<commit>` prebuilt
-imports independently of Git commit hash ordering. This module version is
-separate from the Debian package version.
+imports independently of Git commit hash ordering.
 
 ## Supported configurations
 
@@ -20,17 +19,26 @@ not been validated by this Bazel change.
 
 ```sh
 # Run inside native Debian Trixie. Add --config=aarch64 on ARM64.
-bazel build //:libdashapi_deb //:libdashapi_dbg_deb
+bazel build //:libdashapi_pkg //:libdashapi_pkg.debug_symbols
 bazel test --test_output=errors \
   //bazel:utils_test //bazel:python_test \
   //bazel:runtime_consumer_test //bazel:source_contract_test
 ```
 
-CI installs package inspection tools (`binutils`, `dpkg-deb`, and `gdb`).
+CI installs archive and ELF inspection tools (`tar`, `binutils`, and `gdb`).
 Protobuf and SWIG generation use declared Bazel execution tools. Protobuf's
 compiler, runtime libraries and well-known schema inputs come from shared
 `sonic-build-infra` build tools, and its reusable generation rules and target
 library interface are owned by the registry's `protobuf-debian` module.
+
+The single SONiC registry snapshot `d0805ca6fd564469b78812b0818a179228c31707`
+combines the execution-side protobuf tools from infrastructure PR #10 and their
+registrations in registry PRs #24 and #25, based on registry main
+`b6eb3272677fa0b7c211692580c253f6873b0e31`. It selects infrastructure
+`0.0.14-7caf89cd7f0f347358aca3837627336ada15dcd3`,
+`protobuf-debian 3.21.12-sonic.1`, and `rules_distroless 0.9.4-sonic.1`.
+The protobuf registrations remain proposed work; this is their immutable
+combined snapshot. Bazel Central Registry supplies the other public modules.
 
 ## Declared external dependencies
 
@@ -46,10 +54,10 @@ configuration; programs run during generation are selected with `cfg = "exec"`.
 | Boost Filesystem and System | Debian Boost 1.83 | Target libraries for the existing utility tests |
 | SWIG | SWIG 4.3.0 through shared rules: BCR `4.3.0.bcr.2` executable and Debian support files | Execution-side Python wrapper generation |
 | Python Protobuf for Bazel | Hash-pinned PyPI `protobuf==6.33.5`, including its native extension | Bazel Python consumers and tests |
-| Python Protobuf for installed packages | Declared Debian `python3-protobuf` dependency, version 3.21.12 from the CI snapshot | System Python installation tests |
+| Python Protobuf for installed tars | Debian `python3-protobuf`, version 3.21.12 from the CI snapshot | System Python installation tests |
 
 CI uses the digest-pinned Debian Trixie image dated `20260713`, which predates
-the package snapshots. Its inspection tools and installed-package dependencies
+the package snapshots. Its inspection tools and installed-tar dependencies
 use the same fixed Debian snapshots as the pinned infrastructure:
 `20260727T143429Z` for Debian
 and `20260726T121236Z` for Debian Security. APT retains signature verification;
@@ -57,6 +65,12 @@ snapshot entries disable only the expired Release-file validity window. The
 validation artifact records the actual APT sources, package policy and installed
 package versions. Rebuilding these external dependencies from source is outside
 this component migration's scope.
+
+The deployed runtime needs `libc6`, `libgcc-s1`, `libstdc++6`,
+`libprotobuf32t64` (Protobuf 3.21.12), Python 3.13, `python3-click`, and
+`python3-protobuf`. CI installs these external dependencies from the snapshots,
+then extracts DASH's runtime and debug tars into the container's standard
+`/usr` tree and exercises the installed C, Python, and CLI interfaces.
 
 ## Distroless header inputs
 
@@ -86,8 +100,6 @@ modules; changing lockfile handling does not change those declared inputs.
 | `//misc:dash_api` | Generated Python modules and SWIG extension for Bazel consumers |
 | `//:libdashapi_pkg` | Runtime/install tar, preserving Make's installed paths |
 | `//:libdashapi_pkg.debug_symbols` | Detached symbols matched to the packaged library and Python extension |
-| `//:libdashapi_deb` | `libdashapi_1.0.0_<architecture>.deb` |
-| `//:libdashapi_dbg_deb` | `libdashapi-dbg_1.0.0_<architecture>.deb` |
 
 The runtime package contains the generated C++ headers and `utils.h` under
 `/usr/include/dash_api`, `libdashapi.so` under `/usr/lib`, generated Python
@@ -114,25 +126,25 @@ image; this repository does not build a container image.
   protobuf optional/timestamp behavior, and runs the existing CLI roundtrip test.
 - `runtime_consumer_test` exercises C++ and C APIs and verifies the process loads
   the selected source-built library.
-- `source_contract_test` compares the complete installed inventory with the
-  schema inputs, checks runtime and Debian payload equality, architecture,
+- `source_contract_test` compares the complete tar inventory with the
+  schema inputs, checks ownership, modes, architecture,
   SONAME and dependencies, and validates both runtime/debug pairs with build IDs,
   debug-link checksums and GDB source-line lookup.
-- CI also installs the generated Debian packages with their declared runtime
-  dependencies. `bazel/installed_package_test.py` then checks C API, Python/SWIG,
-  and installed CLI roundtrips using system Python, without Bazel runfiles or
-  custom library search paths.
+- CI stages both generated tars with the declared external runtime dependencies.
+  `bazel/installed_tar_test.py` then checks C API, Python/SWIG, and installed CLI
+  roundtrips using system Python, without Bazel runfiles or custom library search
+  paths.
 
 The required source checks are `Bazel (AMD64)` and `Bazel (ARM64)`. Open a
 successful run under **Actions → Bazel** and download its **Artifacts**:
 
 - `sonic-dash-api-packages-<architecture>-<revision>` contains runtime/debug
-  Debian packages and tar archives, headers, the linked library, a compiled
+  tar archives, headers, the linked library, a compiled
   consumer, and SHA-256 provenance.
 - `sonic-dash-api-validation-<architecture>-<revision>` contains test results,
   build events, source action records, environment and APT inputs, declarations,
   and the generated dependency lock used by that native build.
 
-Build/test evidence identifies the tested commit and architecture. The package
+Build/test evidence identifies the tested commit and architecture. The tar
 inspection verifies symbols for DASH's two ELF outputs; third-party runtime
 libraries retain their own separate symbol-package requirements.

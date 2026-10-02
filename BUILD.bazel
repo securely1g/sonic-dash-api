@@ -1,6 +1,5 @@
 load("@protobuf_debian//:defs.bzl", "cpp_proto_sources", "python_proto_sources")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
-load("@sonic_build_infra//deb:sonic_deb.bzl", "sonic_deb")
 load("@sonic_build_infra//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 
 package(default_visibility = ["//visibility:public"])
@@ -168,33 +167,4 @@ sonic_deploy_tar(
         "./usr/lib/python3/dist-packages/dash_api/utils.py uid=0 gid=0 mode=0644 time=0 type=file content=$(location //misc:utils_python)",
         "./usr/bin/dash_api_utils uid=0 gid=0 mode=0755 time=0 type=file content=$(location //misc:dash_api_utils)",
     ],
-)
-
-sonic_deb(
-    name = "libdashapi_deb",
-    data = ":libdashapi_pkg",
-    depends = [
-        "libc6 (>= 2.38)",
-        "libgcc-s1",
-        "libstdc++6 (>= 14)",
-        "libprotobuf32t64 (>= 3.21.12)",
-        "python3 (>= 3.13)",
-        "python3 (<< 3.14)",
-        "python3-click",
-        "python3-protobuf",
-    ],
-    description = "DASH API definitions and C++/Python utilities for SONiC.",
-    maintainer = "SONiC <sonic-dev@lists.sonicfoundation.dev>",
-    package = "libdashapi",
-    version = "1.0.0",
-)
-
-sonic_deb(
-    name = "libdashapi_dbg_deb",
-    data = ":libdashapi_pkg.debug_symbols",
-    depends = ["libdashapi (= 1.0.0)"],
-    description = "Matching debug symbols for the SONiC DASH API.",
-    maintainer = "SONiC <sonic-dev@lists.sonicfoundation.dev>",
-    package = "libdashapi-dbg",
-    version = "1.0.0",
 )

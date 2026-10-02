@@ -1,4 +1,4 @@
-"""Retain source-built DASH packages, split symbols and native validation evidence."""
+"""Retain source-built DASH tars, split symbols and native validation evidence."""
 
 from __future__ import annotations
 
@@ -24,13 +24,11 @@ TESTS = {
 DECLARATIONS = (
     ".bazelversion", ".bazelrc", "MODULE.bazel",
     "BUILD.bazel", "sources.bzl", "bazel/BUILD.bazel", "misc/BUILD.bazel", "Makefile",
-    "debian/control", "debian/changelog",
+    "bazel/installed_tar_test.py", "bazel/source_contract_test.py",
 )
 PACKAGES = {
     "//:libdashapi_pkg": (".tar", "packages/libdashapi.tar"),
     "//:libdashapi_pkg.debug_symbols": (".tar.gz", "packages/libdashapi.debug.tar.gz"),
-    "//:libdashapi_deb": (".deb", "packages/libdashapi.deb"),
-    "//:libdashapi_dbg_deb": (".deb", "packages/libdashapi-dbg.deb"),
 }
 
 
@@ -115,7 +113,7 @@ def main() -> None:
     for target, (suffix, destination) in PACKAGES.items():
         candidates = [path for path in files(target) if path.name.endswith(suffix)]
         require(len(candidates) == 1, "expected one package output: " + target)
-        retain(candidates[0], Path("packages") / candidates[0].name if suffix == ".deb" else destination)
+        retain(candidates[0], destination)
     libraries = files("//:shared_library")
     require(len(libraries) == 1 and libraries[0].name == "libdashapi.so", "expected one source-built DASH library")
     retain(libraries[0], "development/libdashapi.so")
@@ -186,7 +184,7 @@ def main() -> None:
     }
     provenance = {
         "schema_version": 2,
-        "scope": "Source-generated C++ and Python protobuf APIs, C++ library, SWIG extension and CLI; Bazel-produced runtime/debug packages, native C++/Python tests, package inventory and matching split-symbol validation.",
+        "scope": "Source-generated C++ and Python protobuf APIs, C++ library, SWIG extension and CLI; Bazel-produced runtime/debug tars, native C++/Python tests, installed tar consumers, complete inventory and matching split-symbol validation.",
         "source": {
             "revision": run(repo, "git", "rev-parse", "HEAD"),
             "tree": run(repo, "git", "rev-parse", "HEAD^{tree}"),

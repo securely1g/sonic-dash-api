@@ -1,10 +1,9 @@
-"""Check source-built DASH packages, their complete install tree and split symbols."""
+"""Check source-built DASH tars, their complete install tree and split symbols."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -58,19 +57,6 @@ def tar_inventory(path: Path) -> dict[str, tuple[bytes, int]]:
         return inventory(archive)
 
 
-def deb_inventory(path: Path) -> dict[str, tuple[bytes, int]]:
-    result = subprocess.run(["dpkg-deb", "--fsys-tarfile", str(path)], capture_output=True, check=True)
-    with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
-        return inventory(archive)
-
-
-def package_fields(path: Path) -> dict[str, str]:
-    return dict(
-        line.split(": ", 1)
-        for line in run("dpkg-deb", "--field", str(path), "Package", "Version", "Architecture").splitlines()
-    )
-
-
 def build_id(path: Path) -> str:
     matches = re.findall(r"Build ID: ([0-9a-f]+)", run("readelf", "--notes", str(path)))
     require(len(matches) == 1, "expected one ELF build ID: " + str(path))
@@ -121,8 +107,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-tar", type=Path, required=True)
     parser.add_argument("--debug-tar", type=Path, required=True)
-    parser.add_argument("--runtime-deb", type=Path, required=True)
-    parser.add_argument("--debug-deb", type=Path, required=True)
     parser.add_argument("--library", type=Path, required=True)
     parser.add_argument("--proto", type=Path, action="append", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
@@ -147,24 +131,10 @@ def main() -> None:
     runtime = tar_inventory(args.runtime_tar)
     debug = tar_inventory(args.debug_tar)
     require(set(runtime) == expected, "runtime install inventory mismatch; missing=" + str(sorted(expected - set(runtime))) + "; unexpected=" + str(sorted(set(runtime) - expected)))
-    require(runtime == deb_inventory(args.runtime_deb), "runtime DEB payload differs from its deploy tar")
-    require(debug == deb_inventory(args.debug_deb), "debug DEB payload differs from its symbols tar")
     for path, (_, mode) in runtime.items():
         expected_mode = 0o755 if path == "usr/bin/dash_api_utils" else 0o644
         require(mode == expected_mode, "unexpected installed file mode: " + path + " " + oct(mode))
     require(all(not path.endswith(".debug") for path in runtime), "debug files leaked into the runtime package")
-
-    runtime_fields = package_fields(args.runtime_deb)
-    debug_fields = package_fields(args.debug_deb)
-    require(runtime_fields["Package"] == "libdashapi", "unexpected runtime package name")
-    require(debug_fields["Package"] == "libdashapi-dbg", "unexpected debug package name")
-    require(runtime_fields["Architecture"] == debug_fields["Architecture"] == args.architecture, "DEB architecture mismatch")
-    require(runtime_fields["Version"] == debug_fields["Version"], "runtime/debug package version mismatch")
-    debug_dependencies = run("dpkg-deb", "--field", str(args.debug_deb), "Depends")
-    require("libdashapi (= " + runtime_fields["Version"] + ")" in debug_dependencies, "debug DEB must depend on the exact runtime version")
-    runtime_dependencies = run("dpkg-deb", "--field", str(args.runtime_deb), "Depends")
-    for package in ("libprotobuf32t64", "python3-protobuf", "python3-click"):
-        require(re.search(r"(?:^|[,|]\s*)" + re.escape(package) + r"(?:\s|,|$)", runtime_dependencies) is not None, "runtime DEB omits dependency: " + package)
 
     records = {}
     with tempfile.TemporaryDirectory(prefix="dash-source-contract-") as temporary:
@@ -215,6 +185,7 @@ def main() -> None:
         "installed_files": len(runtime),
         "debug_files": len(debug),
         "runtime_tar_sha256": hashlib.sha256(args.runtime_tar.read_bytes()).hexdigest(),
+        "debug_tar_sha256": hashlib.sha256(args.debug_tar.read_bytes()).hexdigest(),
         "elf": records,
     }, sort_keys=True))
 

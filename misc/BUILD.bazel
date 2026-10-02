@@ -32,7 +32,7 @@ swig_gen(
 
 # Match Make: the extension embeds DASH's utility/protobuf objects, and resolves
 # Python symbols from its interpreter instead of linking against libpython.
-# Its Debian package targets Python 3.13 even when a consuming root selects a
+# Its runtime tar targets Python 3.13 even when a consuming root selects a
 # different default interpreter. Select those versioned headers explicitly.
 cc_binary(
     name = "pypkg/dash_api/_utils.so",

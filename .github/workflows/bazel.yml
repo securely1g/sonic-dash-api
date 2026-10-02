@@ -49,7 +49,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
       CI_IMAGE: debian:trixie-20260713@sha256:fac46bff2e02f51425b6e33b0e1169f55dfb053d83511ca28aa50c09fd5ed7a4
     steps:
-      - name: Install build and package inspection tools
+      - name: Install build and archive inspection tools
         run: |
           # Match the pinned sonic-build-infra APT snapshots. HTTP bootstraps
           # ca-certificates; APT still verifies Debian's signed Release files.
@@ -110,13 +110,13 @@ jobs:
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=update
           @buildifier_prebuilt//:buildifier -- -mode=check -r "$GITHUB_WORKSPACE"
 
-      - name: Build DASH from source and package its runtime and symbols
+      - name: Build DASH from source and archive its runtime and symbols
         run: >-
           bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-events.json"
-          //:libdashapi_deb //:libdashapi_dbg_deb //bazel:runtime_consumer_test
+          //:libdashapi_pkg //:libdashapi_pkg.debug_symbols //bazel:runtime_consumer_test
 
-      - name: Run C++, Python, runtime and package tests
+      - name: Run C++, Python, runtime and tar contract tests
         run: >-
           bazel test ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
           --nocache_test_results --test_output=errors
@@ -124,14 +124,22 @@ jobs:
           //bazel:source_contract_test //bazel:runtime_consumer_test
           //bazel:utils_test //bazel:python_test
 
-      - name: Test installed packages with their declared runtime dependencies
+      - name: Stage runtime and debug tars and test their installed consumers
         run: |
+          # External runtime dependencies come from the same signed snapshots
+          # as the toolchain. DASH itself is installed only from its built tars.
           apt-get install -y --no-install-recommends \
-            ./bazel-bin/libdashapi_1.0.0_${{ matrix.architecture }}.deb \
-            ./bazel-bin/libdashapi-dbg_1.0.0_${{ matrix.architecture }}.deb
+            libc6 libgcc-s1 libstdc++6 libprotobuf32t64 \
+            python3 python3-click python3-protobuf
+          runtime_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:libdashapi_pkg --output=files)"
+          debug_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:libdashapi_pkg.debug_symbols --output=files)"
+          test -f "$runtime_tar"
+          test -f "$debug_tar"
+          tar --extract --file "$runtime_tar" --directory /
+          tar --extract --file "$debug_tar" --directory /
           env -u LD_LIBRARY_PATH -u PYTHONPATH \
-            python3 bazel/installed_package_test.py \
-            2>&1 | tee artifacts/validation/installed-package-test.log
+            python3 bazel/installed_tar_test.py \
+            2>&1 | tee artifacts/validation/installed-tar-test.log
           dpkg-query -W -f='${binary:Package}\t${Version}\n' \
             > artifacts/validation/installed-packages.txt
           apt-cache policy libprotobuf32t64 python3-protobuf \
@@ -140,10 +148,10 @@ jobs:
       - name: Record source generation and compilation actions
         run: >-
           bazel aquery ${{ matrix.bazel_args }} --lockfile_mode=update
-          'mnemonic("CppCompile|DebianProtoSources|SwigGen.*", deps(//:libdashapi_deb))'
+          'mnemonic("CppCompile|DebianProtoSources|SwigGen.*", deps(//:libdashapi_pkg))'
           --output=jsonproto > artifacts/validation/source-actions.json
 
-      - name: Collect source-built packages and provenance
+      - name: Collect source-built tars and provenance
         run: >-
           python3 bazel/ci/collect_artifacts.py
           --architecture '${{ matrix.architecture }}'
@@ -165,7 +173,7 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
 
-      - name: Upload runtime and matching debug packages
+      - name: Upload runtime and matching debug tars
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sonic-dash-api-packages-${{ matrix.arch }}-${{ github.sha }}

@@ -15,7 +15,7 @@ bazel_dep(name = "rules_cc", version = "0.2.16")
 bazel_dep(name = "rules_distroless", version = "0.9.4-sonic.1")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "protobuf-debian", version = "3.21.12-sonic.1", repo_name = "protobuf_debian")
-bazel_dep(name = "sonic-build-infra", version = "0.0.10-7bc84c13cb812d0cf576485009352bbc96dde00a", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-build-infra", version = "0.0.14-7caf89cd7f0f347358aca3837627336ada15dcd3", repo_name = "sonic_build_infra")
 
 # Historical dotted versions requested by dependencies sort above this native fix.
 single_version_override(

@@ -1,4 +1,4 @@
-"""Exercise installed DASH Debian packages with only their runtime dependencies."""
+"""Exercise DASH's extracted runtime tar with its declared runtime dependencies."""
 
 from __future__ import annotations
 
@@ -126,9 +126,9 @@ def main() -> None:
     parser.add_argument("--proto-dir", type=Path, default=Path(__file__).resolve().parents[1] / "proto")
     parser.add_argument("--phase", choices=("c-api", "python"), help=argparse.SUPPRESS)
     args = parser.parse_args()
-    require(not os.environ.get("LD_LIBRARY_PATH"), "unset LD_LIBRARY_PATH before testing installed packages")
-    require(not os.environ.get("PYTHONPATH"), "unset PYTHONPATH before testing installed packages")
-    require(all(path.is_file() for path in (LIBRARY, EXTENSION, CLI)), "DASH runtime package is not installed at its standard paths")
+    require(not os.environ.get("LD_LIBRARY_PATH"), "unset LD_LIBRARY_PATH before testing the installed tar")
+    require(not os.environ.get("PYTHONPATH"), "unset PYTHONPATH before testing the installed tar")
+    require(all(path.is_file() for path in (LIBRARY, EXTENSION, CLI)), "DASH runtime tar is not installed at its standard paths")
     proto_dir = args.proto_dir.resolve()
     if args.phase:
         record = check_c_api() if args.phase == "c-api" else check_python(proto_dir)
@@ -171,5 +171,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        print("Installed DASH package validation failed: " + str(error), file=sys.stderr)
+        print("Installed DASH tar validation failed: " + str(error), file=sys.stderr)
         sys.exit(1)
