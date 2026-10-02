@@ -160,7 +160,9 @@ def main() -> None:
     distroless_repository = mapping["rules_distroless"]
     require(re.fullmatch(r"[A-Za-z0-9._+-]+", distroless_repository) is not None,
             "Distroless canonical repository is ambiguous")
-    distroless_module = execution_root / "external" / distroless_repository / "MODULE.bazel"
+    # Extension-only repositories need not have a symlink in the action execroot.
+    output_base = Path(bazel("info", *info_options, "output_base"))
+    distroless_module = output_base / "external" / distroless_repository / "MODULE.bazel"
     distroless_version = module_version((repo / "MODULE.bazel").read_text(), "bazel_dep", "rules_distroless")
     require(module_version(distroless_module.read_text(), "module", "rules_distroless") == distroless_version,
             "resolved Distroless version differs from the declaration")
