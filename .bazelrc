@@ -1,0 +1,12 @@
+# Registry entries pin the shared build tools and matching protobuf compiler/runtime.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/d0805ca6fd564469b78812b0818a179228c31707
+common --registry=https://bcr.bazel.build/
+
+# Run in native Debian Trixie with matching execution and target architectures.
+common --platforms=@sonic_build_infra//platforms:x86_64_trixie
+common --host_platform=@sonic_build_infra//platforms:x86_64_trixie
+common:aarch64 --platforms=@sonic_build_infra//platforms:aarch64_trixie
+common:aarch64 --host_platform=@sonic_build_infra//platforms:aarch64_trixie
+
+# Match the legacy optimized build; deploy targets retain and split DWARF.
+build --compilation_mode=opt
