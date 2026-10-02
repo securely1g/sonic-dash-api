@@ -28,9 +28,9 @@ DECLARATIONS = (
 )
 PACKAGES = {
     "//:libdashapi_pkg": (".tar", "packages/libdashapi.tar"),
-    "//:libdashapi_pkg.debug_symbols": (".tar.gz", "packages/libdashapi.debug.tar.gz"),
+    "//:libdashapi_pkg.debug_symbols": (".tar", "packages/libdashapi.debug.tar"),
     "//:protobuf_runtime_pkg": (".tar", "packages/libprotobuf.tar"),
-    "//:protobuf_debug_pkg": (".tar.gz", "packages/libprotobuf.debug.tar.gz"),
+    "//:protobuf_debug_pkg": (".tar", "packages/libprotobuf.debug.tar"),
 }
 
 
