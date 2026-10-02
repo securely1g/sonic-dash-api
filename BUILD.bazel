@@ -6,6 +6,8 @@ package(default_visibility = ["//visibility:public"])
 
 _PROTOS = glob(["proto/*.proto"])
 
+_PROTO_NAMES = [path.removeprefix("proto/").removesuffix(".proto") for path in _PROTOS]
+
 exports_files(_PROTOS)
 
 cpp_proto_sources(
@@ -89,7 +91,6 @@ cc_library(
 
 cc_binary(
     name = "libdashapi.so",
-    copts = ["-std=c++14"],
     linkopts = [
         "-Wl,-soname,libdashapi.so",
         "-Wl,--build-id=sha1",
@@ -122,49 +123,37 @@ alias(
     actual = ":libdashapi.so",
 )
 
-# Match Make's installed paths. The package owns both its runtime ELF files and
-# the debug data split from those exact linked files.
+# Define each non-ELF install entry once: source, installed path, file mode.
+_INSTALL_FILES = [
+    (
+        "generated/dash_api/" + name + suffix,
+        directory + name + suffix,
+        "0644",
+    )
+    for name in _PROTO_NAMES
+    for suffix, directory in [
+        (".pb.h", "./usr/include/dash_api/"),
+        ("_pb2.py", "./usr/lib/python3/dist-packages/dash_api/"),
+        ("_pb2.pyi", "./usr/lib/python3/dist-packages/dash_api/"),
+    ]
+] + [
+    (":public_utils_header", "./usr/include/dash_api/utils.h", "0644"),
+    ("//misc:pypkg/dash_api/__init__.py", "./usr/lib/python3/dist-packages/dash_api/__init__.py", "0644"),
+    ("//misc:utils_python", "./usr/lib/python3/dist-packages/dash_api/utils.py", "0644"),
+    ("//misc:dash_api_utils", "./usr/bin/dash_api_utils", "0755"),
+]
+
+# Match Make's installed paths. Split symbols from the same linked ELF files.
 sonic_deploy_tar(
     name = "libdashapi_pkg",
-    srcs = [
-        "generated/dash_api/{}{}".format(
-            f.removeprefix("proto/").removesuffix(".proto"),
-            suffix,
-        )
-        for f in _PROTOS
-        for suffix in [
-            ".pb.h",
-            "_pb2.py",
-            "_pb2.pyi",
-        ]
-    ] + [
-        ":public_utils_header",
-        "//misc:dash_api_utils",
-        "//misc:pypkg/dash_api/__init__.py",
-        "//misc:utils_python",
-    ],
+    srcs = [entry[0] for entry in _INSTALL_FILES],
     binaries = {
         "./usr/lib/libdashapi.so uid=0 gid=0 mode=0644 time=0 type=file": ":libdashapi.so",
         "./usr/lib/python3/dist-packages/dash_api/_utils.so uid=0 gid=0 mode=0644 time=0 type=file": "//misc:_utils.so",
     },
     force_debug_build = True,
     mtree = [
-        "./usr/include/dash_api/{0}.pb.h uid=0 gid=0 mode=0644 time=0 type=file content=$(location generated/dash_api/{0}.pb.h)".format(f.removeprefix("proto/").removesuffix(".proto"))
-        for f in _PROTOS
-    ] + [
-        "./usr/lib/python3/dist-packages/dash_api/{0}_pb2.{1} uid=0 gid=0 mode=0644 time=0 type=file content=$(location generated/dash_api/{0}_pb2.{1})".format(
-            f.removeprefix("proto/").removesuffix(".proto"),
-            ext,
-        )
-        for f in _PROTOS
-        for ext in [
-            "py",
-            "pyi",
-        ]
-    ] + [
-        "./usr/include/dash_api/utils.h uid=0 gid=0 mode=0644 time=0 type=file content=$(location :public_utils_header)",
-        "./usr/lib/python3/dist-packages/dash_api/__init__.py uid=0 gid=0 mode=0644 time=0 type=file content=$(location //misc:pypkg/dash_api/__init__.py)",
-        "./usr/lib/python3/dist-packages/dash_api/utils.py uid=0 gid=0 mode=0644 time=0 type=file content=$(location //misc:utils_python)",
-        "./usr/bin/dash_api_utils uid=0 gid=0 mode=0755 time=0 type=file content=$(location //misc:dash_api_utils)",
+        "{} uid=0 gid=0 mode={} time=0 type=file content=$(location {})".format(destination, mode, source)
+        for source, destination, mode in _INSTALL_FILES
     ],
 )

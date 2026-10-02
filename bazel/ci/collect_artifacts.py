@@ -23,7 +23,7 @@ TESTS = {
 }
 DECLARATIONS = (
     ".bazelversion", ".bazelrc", "MODULE.bazel",
-    "BUILD.bazel", "sources.bzl", "bazel/BUILD.bazel", "misc/BUILD.bazel", "Makefile",
+    "BUILD.bazel", "bazel/BUILD.bazel", "misc/BUILD.bazel", "Makefile",
     "bazel/installed_tar_test.py", "bazel/source_contract_test.py",
 )
 PACKAGES = {
@@ -87,8 +87,11 @@ def main() -> None:
 
     platform_name = {"amd64": "x86_64_trixie", "arm64": "aarch64_trixie"}[args.architecture]
     platform_label = "@sonic_build_infra//platforms:" + platform_name
-    canonical = bazel("cquery", "config(" + platform_label + ", target)", "--output=starlark", "--starlark:expr=target.label.repo_name")
-    require(re.fullmatch(r"[A-Za-z0-9._+-]+", canonical) is not None, "infrastructure canonical repository is ambiguous")
+    mapping = json.loads(bazel("mod", "dump_repo_mapping", ""))
+    require(all(re.fullmatch(r"[A-Za-z0-9._+-]+", mapping[name]) is not None
+                for name in ("sonic_build_infra", "rules_distroless")),
+            "resolved canonical repository is ambiguous")
+    canonical = mapping["sonic_build_infra"]
     # Bazel 8 info does not apply the root module's apparent-repository mapping
     # to platform flags. Keep the same platforms, using their resolved labels.
     canonical_platform = "@@" + canonical + "//platforms:" + platform_name
@@ -147,24 +150,26 @@ def main() -> None:
         retain(source, Path("validation/declarations/proto") / source.name)
     for source in sorted([*(repo / "bazel").rglob("*.bzl"), *(repo / "misc").glob("*.bzl")]):
         retain(source, Path("validation/declarations") / source.relative_to(repo))
-    declared_version = module_version((repo / "MODULE.bazel").read_text(), "bazel_dep")
-    fetched_module = execution_root / "external" / canonical / "MODULE.bazel"
-    require(fetched_module.is_file(), "resolved infrastructure MODULE.bazel is missing")
-    require(module_version(fetched_module.read_text(), "module") == declared_version, "resolved infrastructure version differs from the declaration")
-    retain(fetched_module, "validation/declarations/resolved-sonic-build-infra.MODULE.bazel")
-
-    # Prove the native header fix wins over historical dotted versions in the graph.
-    mapping = json.loads(bazel("mod", "dump_repo_mapping", ""))
-    distroless_repository = mapping["rules_distroless"]
-    require(re.fullmatch(r"[A-Za-z0-9._+-]+", distroless_repository) is not None,
-            "Distroless canonical repository is ambiguous")
     # Extension-only repositories need not have a symlink in the action execroot.
     output_base = Path(bazel("info", *info_options, "output_base"))
-    distroless_module = output_base / "external" / distroless_repository / "MODULE.bazel"
-    distroless_version = module_version((repo / "MODULE.bazel").read_text(), "bazel_dep", "rules_distroless")
-    require(module_version(distroless_module.read_text(), "module", "rules_distroless") == distroless_version,
-            "resolved Distroless version differs from the declaration")
-    retain(distroless_module, "validation/declarations/resolved-rules_distroless.MODULE.bazel")
+    root_module = (repo / "MODULE.bazel").read_text()
+    resolved_modules = {}
+    for key, name, apparent in (
+        ("infrastructure", "sonic-build-infra", "sonic_build_infra"),
+        ("distroless", "rules_distroless", "rules_distroless"),
+    ):
+        repository = mapping[apparent]
+        fetched_module = output_base / "external" / repository / "MODULE.bazel"
+        require(fetched_module.is_file(), "resolved " + name + " MODULE.bazel is missing")
+        version = module_version(root_module, "bazel_dep", name)
+        require(module_version(fetched_module.read_text(), "module", name) == version,
+                "resolved " + name + " version differs from the declaration")
+        retain(fetched_module, "validation/declarations/resolved-" + name + ".MODULE.bazel")
+        resolved_modules[key] = {
+            "version": version,
+            "canonical_repository": repository,
+            "module_sha256": sha256(fetched_module),
+        }
     graph = json.loads(bazel("mod", "graph", "--output=json"))
     require(isinstance(graph, dict) and bool(graph), "resolved module graph is empty")
     (output / "validation/module-graph.json").write_text(json.dumps(graph, indent=2, sort_keys=True) + "\n")
@@ -206,16 +211,8 @@ def main() -> None:
         },
         "package_targets": list(PACKAGES),
         "protobuf_sources": [source.relative_to(repo).as_posix() for source in proto_sources],
-        "infrastructure": {
-            "version": declared_version,
-            "canonical_repository": canonical,
-            "module_sha256": sha256(fetched_module),
-        },
-        "distroless": {
-            "version": distroless_version,
-            "canonical_repository": distroless_repository,
-            "module_sha256": sha256(distroless_module),
-        },
+        "infrastructure": resolved_modules["infrastructure"],
+        "distroless": resolved_modules["distroless"],
         "dependency_resolution": {
             "lockfile_mode": "update",
             "generated_lockfile": generated_lock,

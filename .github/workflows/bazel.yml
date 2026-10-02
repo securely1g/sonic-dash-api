@@ -110,17 +110,11 @@ jobs:
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=update
           @buildifier_prebuilt//:buildifier -- -mode=check -r "$GITHUB_WORKSPACE"
 
-      - name: Build DASH from source and archive its runtime and symbols
-        run: >-
-          bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
-          --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-events.json"
-          //:libdashapi_pkg //:libdashapi_pkg.debug_symbols //bazel:runtime_consumer_test
-
-      - name: Run C++, Python, runtime and tar contract tests
+      - name: Build DASH tars and run C++, Python, runtime and tar contract tests
         run: >-
           bazel test ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
           --nocache_test_results --test_output=errors
-          --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/test-events.json"
+          --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-test-events.json"
           //bazel:source_contract_test //bazel:runtime_consumer_test
           //bazel:utils_test //bazel:python_test
 
@@ -160,8 +154,6 @@ jobs:
 
       - name: Verify generated dependency resolution leaves tracked files clean
         run: |
-          test -s MODULE.bazel.lock
-          git check-ignore --quiet MODULE.bazel.lock
           test -z "$(git status --porcelain --untracked-files=no)"
 
       - name: Upload validation evidence

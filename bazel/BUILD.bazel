@@ -1,6 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_test")
 load("@rules_python//python:defs.bzl", "py_test")
-load("//:sources.bzl", "PROTO_FILES")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -62,7 +61,9 @@ py_test(
         "--runtime-tar=$(rootpath //:libdashapi_pkg)",
         "--debug-tar=$(rootpath //:libdashapi_pkg.debug_symbols)",
         "--library=$(rootpath //:shared_library)",
-    ] + ["--proto=$(rootpath //:{})".format(f) for f in PROTO_FILES] + select({
+        "--proto-paths",
+        "$(rootpaths //:proto_sources)",
+    ] + select({
         "@platforms//cpu:arm64": ["--architecture=arm64"],
         "@platforms//cpu:x86_64": ["--architecture=amd64"],
     }),
@@ -71,5 +72,5 @@ py_test(
         "//:libdashapi_pkg.debug_symbols",
         "//:proto_sources",
         "//:shared_library",
-    ] + ["//:" + f for f in PROTO_FILES],
+    ],
 )

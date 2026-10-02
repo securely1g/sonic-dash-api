@@ -108,13 +108,15 @@ def main() -> None:
     parser.add_argument("--runtime-tar", type=Path, required=True)
     parser.add_argument("--debug-tar", type=Path, required=True)
     parser.add_argument("--library", type=Path, required=True)
-    parser.add_argument("--proto", type=Path, action="append", required=True)
+    parser.add_argument("--proto-paths", nargs="+", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
     args = parser.parse_args()
 
-    proto_names = {source.stem for source in args.proto}
-    require(len(proto_names) == len(args.proto), "duplicate protobuf source names")
-    require(all(source.is_file() for source in args.proto), "protobuf source missing from test inputs")
+    proto_sources = [Path(path) for group in args.proto_paths for path in group.split()]
+    proto_names = {source.stem for source in proto_sources}
+    require(bool(proto_sources), "no protobuf sources supplied")
+    require(len(proto_names) == len(proto_sources), "duplicate protobuf source names")
+    require(all(source.is_file() for source in proto_sources), "protobuf source missing from test inputs")
     # Derive installed names from the actual sources so adding a new proto must
     # also update generation and packaging; do not freeze a successful count.
     expected = {
