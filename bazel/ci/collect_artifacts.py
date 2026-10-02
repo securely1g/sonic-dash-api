@@ -1,4 +1,4 @@
-"""Retain source-built DASH tars, split symbols and native validation evidence."""
+"""Retain source-built DASH/Protobuf tars, symbols and native validation evidence."""
 
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ DECLARATIONS = (
 PACKAGES = {
     "//:libdashapi_pkg": (".tar", "packages/libdashapi.tar"),
     "//:libdashapi_pkg.debug_symbols": (".tar.gz", "packages/libdashapi.debug.tar.gz"),
+    "//:protobuf_runtime_pkg": (".tar", "packages/libprotobuf.tar"),
+    "//:protobuf_debug_pkg": (".tar.gz", "packages/libprotobuf.debug.tar.gz"),
 }
 
 
@@ -89,7 +91,7 @@ def main() -> None:
     platform_label = "@sonic_build_infra//platforms:" + platform_name
     mapping = json.loads(bazel("mod", "dump_repo_mapping", ""))
     require(all(re.fullmatch(r"[A-Za-z0-9._+-]+", mapping[name]) is not None
-                for name in ("sonic_build_infra", "rules_distroless")),
+                for name in ("sonic_build_infra", "rules_distroless", "protobuf_legacy")),
             "resolved canonical repository is ambiguous")
     canonical = mapping["sonic_build_infra"]
     # Bazel 8 info does not apply the root module's apparent-repository mapping
@@ -157,6 +159,7 @@ def main() -> None:
     for key, name, apparent in (
         ("infrastructure", "sonic-build-infra", "sonic_build_infra"),
         ("distroless", "rules_distroless", "rules_distroless"),
+        ("protobuf", "protobuf-legacy", "protobuf_legacy"),
     ):
         repository = mapping[apparent]
         fetched_module = output_base / "external" / repository / "MODULE.bazel"
@@ -170,6 +173,25 @@ def main() -> None:
             "canonical_repository": repository,
             "module_sha256": sha256(fetched_module),
         }
+    protobuf_root = output_base / "external" / mapping["protobuf_legacy"]
+    for declaration in (
+        "BUILD.bazel", "protobuf.bzl", "defs.bzl", "sonic/targets.bzl",
+        "src/google/protobuf/stubs/common.h", "src/google/protobuf/compiler/main.cc",
+    ):
+        retain(protobuf_root / declaration, Path("validation/declarations/protobuf-source") / declaration)
+    version_header = (protobuf_root / "src/google/protobuf/stubs/common.h").read_text()
+    require(re.search(r"^#define GOOGLE_PROTOBUF_VERSION 3021012$", version_header, re.MULTILINE) is not None,
+            "resolved Protobuf headers are not 3.21.12")
+    protoc_version = (output / "validation/protoc-version.txt").read_text().strip()
+    require(protoc_version == "libprotoc 3.21.12", "source compiler version differs from its headers/runtime")
+    source_actions = json.loads((output / "validation/source-actions.json").read_text())
+    actions = source_actions.get("actions", [])
+    protobuf_actions = [action for action in actions
+                        if mapping["protobuf_legacy"] + "/" in " ".join(action.get("arguments", []))]
+    counts = {mnemonic: sum(action.get("mnemonic") == mnemonic for action in protobuf_actions)
+              for mnemonic in ("CppCompile", "ProtoCompile")}
+    require(all(counts.values()), "source actions omit upstream Protobuf compilation or generation")
+    resolved_modules["protobuf"].update({"compiler_version": protoc_version, "source_action_counts": counts})
     graph = json.loads(bazel("mod", "graph", "--output=json"))
     require(isinstance(graph, dict) and bool(graph), "resolved module graph is empty")
     (output / "validation/module-graph.json").write_text(json.dumps(graph, indent=2, sort_keys=True) + "\n")
@@ -189,7 +211,7 @@ def main() -> None:
     }
     provenance = {
         "schema_version": 2,
-        "scope": "Source-generated C++ and Python protobuf APIs, C++ library, SWIG extension and CLI; Bazel-produced runtime/debug tars, native C++/Python tests, installed tar consumers, complete inventory and matching split-symbol validation.",
+        "scope": "Source-built Protobuf 3.21.12 compiler/shared runtime and generated DASH C++/Python APIs, C++ library, SWIG extension and CLI; runtime/debug tars, native C++/Python tests, installed consumers, complete inventory and matching split-symbol validation.",
         "source": {
             "revision": run(repo, "git", "rev-parse", "HEAD"),
             "tree": run(repo, "git", "rev-parse", "HEAD^{tree}"),
@@ -213,6 +235,7 @@ def main() -> None:
         "protobuf_sources": [source.relative_to(repo).as_posix() for source in proto_sources],
         "infrastructure": resolved_modules["infrastructure"],
         "distroless": resolved_modules["distroless"],
+        "protobuf": resolved_modules["protobuf"],
         "dependency_resolution": {
             "lockfile_mode": "update",
             "generated_lockfile": generated_lock,

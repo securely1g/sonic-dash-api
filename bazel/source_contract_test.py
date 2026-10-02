@@ -103,10 +103,69 @@ def materialize(root: Path, files: dict[str, tuple[bytes, int]]) -> None:
         destination.chmod(mode)
 
 
+def check_protobuf(runtime_tar: Path, debug_tar: Path, architecture: str) -> dict:
+    multiarch = {"amd64": "x86_64-linux-gnu", "arm64": "aarch64-linux-gnu"}[architecture]
+    library = "usr/lib/" + multiarch + "/libprotobuf.so.32.0.12"
+    soname = "usr/lib/" + multiarch + "/libprotobuf.so.32"
+    copyright_path = "usr/share/doc/protobuf-legacy/copyright"
+    files = {}
+    links = {}
+    with tarfile.open(runtime_tar) as archive:
+        for member in archive:
+            name = PurePosixPath(member.name)
+            require(not name.is_absolute() and ".." not in name.parts, "unsafe Protobuf archive path")
+            require(member.uid == member.gid == 0, "Protobuf archive member is not root-owned")
+            if member.isdir():
+                continue
+            key = str(name)
+            require(key not in files and key not in links, "duplicate Protobuf archive path")
+            if member.issym():
+                links[key] = member.linkname
+            else:
+                require(member.isfile() and member.mode & 0o777 == 0o644, "unexpected Protobuf archive member: " + key)
+                stream = archive.extractfile(member)
+                require(stream is not None, "unreadable Protobuf archive member")
+                files[key] = (stream.read(), member.mode & 0o777)
+    require(set(files) == {library, copyright_path}, "unexpected Protobuf runtime inventory")
+    require(links == {soname: "libprotobuf.so.32.0.12"}, "Protobuf SONAME symlink differs from its source ELF")
+    debug = tar_inventory(debug_tar)
+    with tempfile.TemporaryDirectory(prefix="dash-protobuf-contract-") as temporary:
+        root = Path(temporary)
+        materialize(root, files)
+        materialize(root, debug)
+        binary = root / library
+        check_architecture(binary, architecture)
+        dynamic = run("readelf", "--dynamic", str(binary))
+        require(re.findall(r"Library soname: \[([^]]+)\]", dynamic) == ["libprotobuf.so.32"], "source Protobuf SONAME changed")
+        require(not re.search(r"\s\.debug_(?:info|line)\s", run("readelf", "--section-headers", "--wide", str(binary))), "Protobuf runtime retains DWARF")
+        identifier = build_id(binary)
+        debug_path = "usr/lib/debug/.build-id/" + identifier[:2] + "/" + identifier[2:] + ".debug"
+        require(set(debug) == {debug_path}, "Protobuf symbols do not match its single runtime ELF")
+        symbols = root / debug_path
+        require(build_id(symbols) == identifier, "Protobuf debug build ID differs")
+        require(".debug_info" in run("readelf", "--section-headers", "--wide", str(symbols)), "Protobuf symbols omit DWARF")
+        check_debuglink(binary, symbols)
+        gdb = run(
+            "gdb", "--nx", "--nh", "--batch",
+            "-iex", "set auto-load off", "-iex", "set debuginfod enabled off",
+            "-ex", "set debug-file-directory " + str(root / "usr/lib/debug"),
+            "-ex", "file " + str(binary),
+            "-ex", "info line google::protobuf::DescriptorPool::generated_pool",
+        )
+        require(re.search(r'Line \d+ of "[^"]*descriptor\.cc"', gdb) is not None, "GDB cannot resolve source Protobuf lines: " + gdb)
+    return {
+        "library": library, "build_id": identifier, "debug_file": debug_path,
+        "runtime_tar_sha256": hashlib.sha256(runtime_tar.read_bytes()).hexdigest(),
+        "debug_tar_sha256": hashlib.sha256(debug_tar.read_bytes()).hexdigest(),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-tar", type=Path, required=True)
     parser.add_argument("--debug-tar", type=Path, required=True)
+    parser.add_argument("--protobuf-runtime-tar", type=Path, required=True)
+    parser.add_argument("--protobuf-debug-tar", type=Path, required=True)
     parser.add_argument("--library", type=Path, required=True)
     parser.add_argument("--proto-paths", nargs="+", required=True)
     parser.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
@@ -151,6 +210,10 @@ def main() -> None:
             needed = re.findall(r"Shared library: \[([^]]+)\]", dynamic)
             require("libprotobuf.so.32" in needed, "DASH binary must retain the selected protobuf ABI: " + relative)
             require(not any(name.startswith("libprotobuf-lite") for name in needed), "DASH binary unnecessarily requires protobuf-lite: " + relative)
+            symbols = run("readelf", "--dyn-syms", "--wide", str(binary))
+            pool = [line for line in symbols.splitlines()
+                    if "_ZN6google8protobuf14DescriptorPool14generated_poolEv" in line]
+            require(len(pool) == 1 and " UND " in pool[0], "DASH must import Protobuf's descriptor pool instead of embedding a static runtime: " + relative)
             if relative == LIBRARY:
                 require(re.findall(r"Library soname: \[([^]]+)\]", dynamic) == ["libdashapi.so"], "DASH SONAME differs from its public runtime filename")
             else:
@@ -189,6 +252,7 @@ def main() -> None:
         "runtime_tar_sha256": hashlib.sha256(args.runtime_tar.read_bytes()).hexdigest(),
         "debug_tar_sha256": hashlib.sha256(args.debug_tar.read_bytes()).hexdigest(),
         "elf": records,
+        "protobuf": check_protobuf(args.protobuf_runtime_tar, args.protobuf_debug_tar, args.architecture),
     }, sort_keys=True))
 
 

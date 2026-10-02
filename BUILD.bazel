@@ -1,4 +1,4 @@
-load("@protobuf_debian//:defs.bzl", "cpp_proto_sources", "python_proto_sources")
+load("@protobuf_legacy//:defs.bzl", "cpp_proto_sources", "python_proto_sources")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
 load("@sonic_build_infra//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 
@@ -85,7 +85,7 @@ cc_library(
         "generated/dash_api",
         "misc",
     ],
-    deps = ["@protobuf_debian//:libprotobuf"],
+    deps = ["@protobuf_legacy//:libprotobuf"],
     alwayslink = True,
 )
 
@@ -114,13 +114,25 @@ cc_library(
     ],
     deps = [
         ":dashapi_dso",
-        "@protobuf_debian//:libprotobuf",
+        "@protobuf_legacy//:libprotobuf",
     ],
 )
 
 alias(
     name = "shared_library",
     actual = ":libdashapi.so",
+)
+
+# Stage the dependency's source-built runtime and matching symbols alongside
+# DASH's own runtime/debug archives without changing DASH's install inventory.
+alias(
+    name = "protobuf_runtime_pkg",
+    actual = "@protobuf_legacy//:libprotobuf_pkg",
+)
+
+alias(
+    name = "protobuf_debug_pkg",
+    actual = "@protobuf_legacy//:libprotobuf_pkg.debug_symbols",
 )
 
 # Define each non-ELF install entry once: source, installed path, file mode.

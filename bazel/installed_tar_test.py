@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import importlib
 import json
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tarfile
 
 
 LIBRARY = Path("/usr/lib/libdashapi.so")
@@ -43,7 +45,39 @@ def check_loaded_path(actual: str, expected: Path) -> None:
     require(Path(actual).resolve() == expected.resolve(), "expected installed file " + str(expected) + ", loaded " + actual)
 
 
-def check_c_api() -> dict:
+def loaded_symbol_path(symbol) -> Path:
+    class DlInfo(ctypes.Structure):
+        _fields_ = [
+            ("filename", ctypes.c_char_p), ("base", ctypes.c_void_p),
+            ("symbol", ctypes.c_char_p), ("address", ctypes.c_void_p),
+        ]
+
+    dladdr = ctypes.CDLL(None).dladdr
+    dladdr.argtypes = [ctypes.c_void_p, ctypes.POINTER(DlInfo)]
+    dladdr.restype = ctypes.c_int
+    info = DlInfo()
+    require(dladdr(ctypes.cast(symbol, ctypes.c_void_p), ctypes.byref(info)) != 0 and bool(info.filename), "cannot locate the loaded implementation")
+    return Path(info.filename.decode()).resolve()
+
+
+def check_protobuf(library, runtime_tar: Path) -> dict:
+    # Resolve an implementation symbol through each DASH DSO's dependencies.
+    # Its location and bytes must match the source-built dependency archive.
+    symbol = getattr(library, "_ZN6google8protobuf14DescriptorPool14generated_poolEv")
+    loaded = loaded_symbol_path(symbol)
+    with tarfile.open(runtime_tar) as archive:
+        candidates = [member for member in archive if member.isfile() and member.name.endswith("/libprotobuf.so.32.0.12")]
+        require(len(candidates) == 1, "expected one source-built Protobuf runtime ELF")
+        member = candidates[0]
+        stream = archive.extractfile(member)
+        require(stream is not None, "source-built Protobuf runtime is unreadable")
+        expected_hash = hashlib.sha256(stream.read()).hexdigest()
+        check_loaded_path(str(loaded), Path("/") / member.name.removeprefix("./"))
+    require(hashlib.sha256(loaded.read_bytes()).hexdigest() == expected_hash, "loaded Protobuf differs from the source-built runtime tar")
+    return {"loaded_library": str(loaded), "sha256": expected_hash}
+
+
+def check_c_api(runtime_tar: Path) -> dict:
     # This phase runs separately from the SWIG consumer. Both legacy ELF files
     # embed DASH's descriptors and should not register them into one process.
     library = ctypes.CDLL(str(LIBRARY))
@@ -56,18 +90,7 @@ def check_c_api() -> dict:
     require(name(TABLE, output, name_size) == name_size, "C API type URL size changed")
     require(output.value == b"sonic/dash.appliance.Appliance", "installed C API type URL differs")
 
-    class DlInfo(ctypes.Structure):
-        _fields_ = [
-            ("filename", ctypes.c_char_p), ("base", ctypes.c_void_p),
-            ("symbol", ctypes.c_char_p), ("address", ctypes.c_void_p),
-        ]
-
-    dladdr = ctypes.CDLL(None).dladdr
-    dladdr.argtypes = [ctypes.c_void_p, ctypes.POINTER(DlInfo)]
-    dladdr.restype = ctypes.c_int
-    info = DlInfo()
-    require(dladdr(ctypes.cast(name, ctypes.c_void_p), ctypes.byref(info)) != 0 and bool(info.filename), "cannot locate the loaded C API implementation")
-    loaded = info.filename.decode()
+    loaded = str(loaded_symbol_path(name))
     check_loaded_path(loaded, LIBRARY)
 
     encode = library.JsonStringToPbBinary
@@ -87,10 +110,10 @@ def check_c_api() -> dict:
     decoded = ctypes.create_string_buffer(json_length)
     require(decode(TABLE, buffer, length, decoded, json_length) == json_length, "C API JSON size changed")
     require(json.loads(decoded.value) == DOCUMENT, "installed C API JSON/protobuf round trip changed content")
-    return {"loaded_library": loaded, "serialized_hex": binary.hex()}
+    return {"loaded_library": loaded, "serialized_hex": binary.hex(), "protobuf": check_protobuf(library, runtime_tar)}
 
 
-def check_python(proto_dir: Path) -> dict:
+def check_python(proto_dir: Path, runtime_tar: Path) -> dict:
     package = importlib.import_module("dash_api")
     check_loaded_path(package.__file__, PACKAGE / "__init__.py")
     sources = sorted(proto_dir.glob("*.proto"))
@@ -118,12 +141,13 @@ def check_python(proto_dir: Path) -> dict:
     state = timestamp_module.HaScopeState()
     state.last_updated_time.seconds = 123
     require(timestamp_module.HaScopeState.FromString(state.SerializeToString()).last_updated_time.seconds == 123, "installed timestamp schema cannot round trip")
-    return {"loaded_extension": extension.__file__, "schema_count": len(sources), "serialized_hex": binary.hex()}
+    return {"loaded_extension": extension.__file__, "schema_count": len(sources), "serialized_hex": binary.hex(), "protobuf": check_protobuf(ctypes.CDLL(str(EXTENSION)), runtime_tar)}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--proto-dir", type=Path, default=Path(__file__).resolve().parents[1] / "proto")
+    parser.add_argument("--protobuf-runtime-tar", type=Path, required=True)
     parser.add_argument("--phase", choices=("c-api", "python"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     require(not os.environ.get("LD_LIBRARY_PATH"), "unset LD_LIBRARY_PATH before testing the installed tar")
@@ -131,7 +155,7 @@ def main() -> None:
     require(all(path.is_file() for path in (LIBRARY, EXTENSION, CLI)), "DASH runtime tar is not installed at its standard paths")
     proto_dir = args.proto_dir.resolve()
     if args.phase:
-        record = check_c_api() if args.phase == "c-api" else check_python(proto_dir)
+        record = check_c_api(args.protobuf_runtime_tar) if args.phase == "c-api" else check_python(proto_dir, args.protobuf_runtime_tar)
         print(json.dumps(record, sort_keys=True))
         return
 
@@ -147,9 +171,11 @@ def main() -> None:
 
     # Use separate native consumers, matching the existing Make deployment.
     script = str(Path(__file__).resolve())
-    c_api = json.loads(run(sys.executable, script, "--phase=c-api", "--proto-dir", str(proto_dir)))
-    python = json.loads(run(sys.executable, script, "--phase=python", "--proto-dir", str(proto_dir)))
+    phase_args = ["--proto-dir", str(proto_dir), "--protobuf-runtime-tar", str(args.protobuf_runtime_tar.resolve())]
+    c_api = json.loads(run(sys.executable, script, "--phase=c-api", *phase_args))
+    python = json.loads(run(sys.executable, script, "--phase=python", *phase_args))
     require(c_api["serialized_hex"] == python["serialized_hex"], "installed C and Python APIs produce different protobuf bytes")
+    require(c_api["protobuf"] == python["protobuf"], "DASH C and Python extensions load different Protobuf runtimes")
 
     run(str(CLI), "--help")
     cli_binary = run(str(CLI), "--to_proto", "-t", TABLE.decode(), input=JSON_INPUT)
@@ -164,6 +190,7 @@ def main() -> None:
         "schema_count": python["schema_count"],
         "cli": str(CLI),
         "needed": dependencies,
+        "protobuf": c_api["protobuf"],
     }, indent=2, sort_keys=True))
 
 

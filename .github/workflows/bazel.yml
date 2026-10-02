@@ -110,7 +110,7 @@ jobs:
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=update
           @buildifier_prebuilt//:buildifier -- -mode=check -r "$GITHUB_WORKSPACE"
 
-      - name: Build DASH tars and run C++, Python, runtime and tar contract tests
+      - name: Build DASH and Protobuf tars and run native consumer and contract tests
         run: >-
           bazel test ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update
           --nocache_test_results --test_output=errors
@@ -120,30 +120,45 @@ jobs:
 
       - name: Stage runtime and debug tars and test their installed consumers
         run: |
-          # External runtime dependencies come from the same signed snapshots
-          # as the toolchain. DASH itself is installed only from its built tars.
+          # DASH and its shared C++ Protobuf runtime come from source-built
+          # tars. The remaining dependencies use the signed toolchain snapshots.
           apt-get install -y --no-install-recommends \
-            libc6 libgcc-s1 libstdc++6 libprotobuf32t64 \
+            libc6 libgcc-s1 libstdc++6 \
             python3 python3-click python3-protobuf
           runtime_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:libdashapi_pkg --output=files)"
           debug_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:libdashapi_pkg.debug_symbols --output=files)"
+          protobuf_runtime_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:protobuf_runtime_pkg --output=files)"
+          protobuf_debug_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:protobuf_debug_pkg --output=files)"
           test -f "$runtime_tar"
           test -f "$debug_tar"
+          test -f "$protobuf_runtime_tar"
+          test -f "$protobuf_debug_tar"
+          tar --extract --file "$protobuf_runtime_tar" --directory /
+          tar --extract --file "$protobuf_debug_tar" --directory /
           tar --extract --file "$runtime_tar" --directory /
           tar --extract --file "$debug_tar" --directory /
+          ldconfig
           env -u LD_LIBRARY_PATH -u PYTHONPATH \
             python3 bazel/installed_tar_test.py \
+            --protobuf-runtime-tar "$protobuf_runtime_tar" \
             2>&1 | tee artifacts/validation/installed-tar-test.log
           dpkg-query -W -f='${binary:Package}\t${Version}\n' \
             > artifacts/validation/installed-packages.txt
-          apt-cache policy libprotobuf32t64 python3-protobuf \
+          apt-cache policy python3-protobuf \
             > artifacts/validation/installed-runtime-policy.txt
 
       - name: Record source generation and compilation actions
         run: >-
           bazel aquery ${{ matrix.bazel_args }} --lockfile_mode=update
-          'mnemonic("CppCompile|DebianProtoSources|SwigGen.*", deps(//:libdashapi_pkg))'
+          'mnemonic("CppCompile|ProtoCompile|SwigGen.*", deps(//:libdashapi_pkg))'
           --output=jsonproto > artifacts/validation/source-actions.json
+
+      - name: Verify source-built Protobuf compiler version
+        run: |
+          bazel run ${{ matrix.bazel_args }} --lockfile_mode=update \
+            @protobuf_legacy//:protoc -- --version \
+            | tee artifacts/validation/protoc-version.txt
+          test "$(cat artifacts/validation/protoc-version.txt)" = 'libprotoc 3.21.12'
 
       - name: Collect source-built tars and provenance
         run: >-

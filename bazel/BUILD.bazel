@@ -11,9 +11,15 @@ exports_files([
 cc_test(
     name = "runtime_consumer_test",
     srcs = ["runtime_consumer.cc"],
-    args = ["$(rootpath //:shared_library)"],
+    args = [
+        "$(rootpath //:shared_library)",
+        "$(rootpath @protobuf_legacy//:shared_library)",
+    ],
     copts = ["-std=c++14"],
-    data = ["//:shared_library"],
+    data = [
+        "//:shared_library",
+        "@protobuf_legacy//:shared_library",
+    ],
     linkopts = ["-ldl"],
     linkstatic = False,
     deps = ["//:dashapi"],
@@ -60,6 +66,8 @@ py_test(
     args = [
         "--runtime-tar=$(rootpath //:libdashapi_pkg)",
         "--debug-tar=$(rootpath //:libdashapi_pkg.debug_symbols)",
+        "--protobuf-runtime-tar=$(rootpath //:protobuf_runtime_pkg)",
+        "--protobuf-debug-tar=$(rootpath //:protobuf_debug_pkg)",
         "--library=$(rootpath //:shared_library)",
         "--proto-paths",
         "$(rootpaths //:proto_sources)",
@@ -71,6 +79,8 @@ py_test(
         "//:libdashapi_pkg",
         "//:libdashapi_pkg.debug_symbols",
         "//:proto_sources",
+        "//:protobuf_debug_pkg",
+        "//:protobuf_runtime_pkg",
         "//:shared_library",
     ],
 )
