@@ -46,9 +46,10 @@ the tars directly. This component does not define Bazel DEB or container targets
 ## Dependencies
 
 [`MODULE.bazel`](../MODULE.bazel) declares versions and
-[`.bazelrc`](../.bazelrc) pins one SONiC registry snapshot plus Bazel Central
-Registry. The selected SONiC snapshot includes the proposed execution-tool and
-protobuf integration from [infra #10](https://github.com/securely1g/sonic-build-infra/pull/10),
+[`.bazelrc`](../.bazelrc) uses one reviewed SONiC registry branch,
+`codex/protobuf-source-tools`, plus Bazel Central Registry for CI and local
+commands. The branch supplies the execution-tool and Protobuf entries that
+are not yet on registry `main`, from [infra #10](https://github.com/securely1g/sonic-build-infra/pull/10),
 [registry #24](https://github.com/securely1g/sonic-bazel-registry/pull/24), and
 [registry #25](https://github.com/securely1g/sonic-bazel-registry/pull/25).
 
@@ -75,7 +76,8 @@ the workflow; actual APT sources and installed versions are retained as evidence
 `MODULE.bazel.lock` is ignored and generated in update mode from a fresh
 checkout. CI retains it under `validation/generated/MODULE.bazel.lock` and
 checks that tracked files stay clean. Keep package locks, versions, source
-integrity values and registry snapshots pinned; do not commit this generated lock.
+integrity values pinned; follow the maintained registry branch and do not commit
+this generated lock.
 
 ## Validation and artifacts
 

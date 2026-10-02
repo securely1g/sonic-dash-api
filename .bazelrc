@@ -1,5 +1,6 @@
-# Registry entries pin the shared build tools and matching protobuf compiler/runtime.
-common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/d0805ca6fd564469b78812b0818a179228c31707
+# Use the reviewed Protobuf registry branch until its required entries reach main.
+# Registry entries retain pinned module sources, compiler/runtime inputs and hashes.
+common --registry=https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/codex/protobuf-source-tools
 common --registry=https://bcr.bazel.build/
 
 # Run in native Debian Trixie with matching execution and target architectures.
