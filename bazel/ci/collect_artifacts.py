@@ -50,14 +50,14 @@ def run(repo: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def module_version(text: str, rule: str) -> str:
+def module_version(text: str, rule: str, name: str = "sonic-build-infra") -> str:
     versions = []
     for stanza in re.findall(r"\b" + rule + r"\s*\((.*?)\)", text, re.DOTALL):
-        if re.search(r'\bname\s*=\s*"sonic-build-infra"', stanza):
+        if re.search(r'\bname\s*=\s*"' + re.escape(name) + r'"', stanza):
             match = re.search(r'\bversion\s*=\s*"([^"]+)"', stanza)
-            require(match is not None, "infrastructure declaration has no version")
+            require(match is not None, name + " declaration has no version")
             versions.append(match.group(1))
-    require(len(versions) == 1, "expected exactly one infrastructure declaration")
+    require(len(versions) == 1, "expected exactly one " + name + " declaration")
     return versions[0]
 
 
@@ -155,6 +155,20 @@ def main() -> None:
     require(module_version(fetched_module.read_text(), "module") == declared_version, "resolved infrastructure version differs from the declaration")
     retain(fetched_module, "validation/declarations/resolved-sonic-build-infra.MODULE.bazel")
 
+    # Prove the native header fix wins over historical dotted versions in the graph.
+    mapping = json.loads(bazel("mod", "dump_repo_mapping", ""))
+    distroless_repository = mapping["rules_distroless"]
+    require(re.fullmatch(r"[A-Za-z0-9._+-]+", distroless_repository) is not None,
+            "Distroless canonical repository is ambiguous")
+    distroless_module = execution_root / "external" / distroless_repository / "MODULE.bazel"
+    distroless_version = module_version((repo / "MODULE.bazel").read_text(), "bazel_dep", "rules_distroless")
+    require(module_version(distroless_module.read_text(), "module", "rules_distroless") == distroless_version,
+            "resolved Distroless version differs from the declaration")
+    retain(distroless_module, "validation/declarations/resolved-rules_distroless.MODULE.bazel")
+    graph = json.loads(bazel("mod", "graph", "--output=json"))
+    require(isinstance(graph, dict) and bool(graph), "resolved module graph is empty")
+    (output / "validation/module-graph.json").write_text(json.dumps(graph, indent=2, sort_keys=True) + "\n")
+
     # This is generated evidence from this native build, not a source input.
     lockfile = repo / "MODULE.bazel.lock"
     require(not run(repo, "git", "ls-files", "--", lockfile.name), "dependency lock must not be tracked")
@@ -196,6 +210,11 @@ def main() -> None:
             "version": declared_version,
             "canonical_repository": canonical,
             "module_sha256": sha256(fetched_module),
+        },
+        "distroless": {
+            "version": distroless_version,
+            "canonical_repository": distroless_repository,
+            "module_sha256": sha256(distroless_module),
         },
         "dependency_resolution": {
             "lockfile_mode": "update",

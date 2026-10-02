@@ -6,7 +6,7 @@ build uses the shared SONiC GCC toolchain and the matching Debian Protobuf
 3.21.12 compiler and `libprotobuf.so.32` runtime. DASH artifacts are produced
 from this checkout; no Azure DASH package is downloaded.
 
-The source-build module uses version `0.0.3`, so its registry versions sort after
+The source-build module uses version `0.0.4`, so its registry versions sort after
 the earlier source builds and historical `0.0.0-<commit>` prebuilt
 imports independently of Git commit hash ordering. This module version is
 separate from the Debian package version.
@@ -57,6 +57,14 @@ snapshot entries disable only the expired Release-file validity window. The
 validation artifact records the actual APT sources, package policy and installed
 package versions. Rebuilding these external dependencies from source is outside
 this component migration's scope.
+
+## Distroless header inputs
+
+The native build selects `rules_distroless 0.9.4-sonic.1` from registry PR #28.
+Its protobuf header fix includes `.inc` fragments required by the Debian headers.
+The root override keeps this version selected when dependencies request older
+`.sonic` versions, which Bazel sorts above the hyphenated version. CI retains the
+resolved graph and checks the fetched module declaration on both architectures.
 
 ## Generated dependency lock
 

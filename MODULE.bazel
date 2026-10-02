@@ -1,6 +1,6 @@
 module(
     name = "sonic-dash-api",
-    version = "0.0.3",
+    version = "0.0.4",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -12,10 +12,16 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = Tr
 bazel_dep(name = "googletest", version = "1.14.0.bcr.1", repo_name = "com_google_googletest")
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.16")
-bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.2")
+bazel_dep(name = "rules_distroless", version = "0.9.4-sonic.1")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "protobuf-debian", version = "3.21.12-sonic.1", repo_name = "protobuf_debian")
 bazel_dep(name = "sonic-build-infra", version = "0.0.10-7bc84c13cb812d0cf576485009352bbc96dde00a", repo_name = "sonic_build_infra")
+
+# Historical dotted versions requested by dependencies sort above this native fix.
+single_version_override(
+    module_name = "rules_distroless",
+    version = "0.9.4-sonic.1",
+)
 
 # Native execution and target toolchains share the pinned SONiC Trixie inputs.
 gcc = use_extension("@sonic_build_infra//toolchains/gcc:extensions.bzl", "gcc")
