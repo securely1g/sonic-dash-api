@@ -14,3 +14,7 @@ debian/libdashapi
 /artifacts/
 # Bazel regenerates dependency resolution; CI retains it as build evidence.
 /MODULE.bazel.lock
+
+# Local Python validation output.
+__pycache__/
+*.pyc

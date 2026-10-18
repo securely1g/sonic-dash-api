@@ -1,0 +1,122 @@
+load("@sonic_build_infra//deb:metadata.bzl", "debian_library", "debian_metadata")
+load("@sonic_build_infra//deb:sonic_deb.bzl", "sonic_deb")
+load("@sonic_build_infra//deb:validation.bzl", "validate_debian_package")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "control",
+    "changelog",
+    "compat",
+])
+
+genrule(
+    name = "libdashapi_stage",
+    srcs = [
+        "//:libdashapi_pkg",
+        "control",
+        "changelog",
+        "compat",
+    ],
+    outs = [
+        "libdashapi/data.tar",
+        "libdashapi/substvars",
+        "libdashapi/postinst",
+        "libdashapi/prerm",
+    ],
+    cmd = select({
+        "@platforms//cpu:x86_64": "export DEB_HOST_ARCH=amd64\n",
+        "@platforms//cpu:aarch64": "export DEB_HOST_ARCH=arm64\n",
+    }) + """
+set -eu
+execroot=$$PWD
+out=$$execroot/$(RULEDIR)/libdashapi
+work=$$(mktemp -d)
+trap 'rm -rf "$$work"' EXIT
+mkdir -p "$$work/debian/libdashapi" "$$out"
+cp $(location control) $(location changelog) $(location compat) "$$work/debian/"
+"$(BSDTAR_BIN)" -xf $(location //:libdashapi_pkg) -C "$$work/debian/libdashapi"
+cd "$$work"
+mkdir -p debian/libdashapi/usr/share/doc/libdashapi
+cp debian/changelog debian/libdashapi/usr/share/doc/libdashapi/changelog
+"$$execroot/$(execpath @sonic_build_infra//tools/build_tools:dh_makeshlibs)" -plibdashapi
+"$$execroot/$(execpath @sonic_build_infra//tools/build_tools:dh_python3)" -plibdashapi --no-ext-rename --no-shebang-rewrite
+"$$execroot/$(execpath @sonic_build_infra//tools/build_tools:dh_installdeb)" -plibdashapi
+# Preserve the original Python helper's compile/cleanup scripts. DASH's
+# unversioned library does not receive an invented versioned shlibs record.
+test "$$(find debian/libdashapi/DEBIAN -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = 'postinst prerm '
+cp debian/libdashapi/DEBIAN/postinst "$$out/postinst"
+cp debian/libdashapi/DEBIAN/prerm "$$out/prerm"
+rm -r debian/libdashapi/DEBIAN
+: >> debian/libdashapi.substvars
+cp debian/libdashapi.substvars "$$out/substvars"
+find debian/libdashapi -exec touch -h -d @0 {} +
+"$$execroot/$(BSDTAR_BIN)" --uid 0 --gid 0 --format gnutar -cf "$$out/data.tar" -C debian/libdashapi .
+""",
+    toolchains = ["@bsd_tar_toolchains//:resolved_toolchain"],
+    tools = [
+        "@sonic_build_infra//tools/build_tools:dh_installdeb",
+        "@sonic_build_infra//tools/build_tools:dh_makeshlibs",
+        "@sonic_build_infra//tools/build_tools:dh_python3",
+    ],
+)
+
+_FOREIGN = [
+    "libc6",
+    "libgcc-s1",
+    "libstdc++6",
+    "libpython3.13",
+]
+
+[debian_library(
+    name = name + "_metadata",
+    control_tar = "@dash_package_deps//" + name + ":control",
+    data = "@dash_package_deps//" + name + ":data",
+) for name in _FOREIGN]
+
+debian_metadata(
+    name = "libdashapi_metadata",
+    changelog = "changelog",
+    control = "control",
+    data = ":libdashapi/data.tar",
+    dependencies = [":" + name + "_metadata" for name in _FOREIGN] + ["@protobuf_legacy//sonic:libprotobuf32t64_metadata"],
+    generate_symbols = True,
+    package = "libdashapi",
+    substitutions = {"misc:Pre-Depends": ""},
+    substvars = ":libdashapi/substvars",
+)
+
+filegroup(
+    name = "libdashapi_symbols",
+    srcs = [":libdashapi_metadata"],
+    output_group = "symbols",
+)
+
+sonic_deb(
+    name = "libdashapi_deb",
+    control_file = ":libdashapi_metadata",
+    control_files = {
+        ":libdashapi_symbols": "symbols",
+        ":libdashapi/postinst": "postinst",
+        ":libdashapi/prerm": "prerm",
+    },
+    data = ":libdashapi/data.tar",
+    package = "libdashapi",
+    tags = ["manual"],
+    version = "1.0.0",
+)
+
+validate_debian_package(
+    name = "libdashapi_check",
+    control = ":libdashapi_metadata",
+    control_files = {
+        ":libdashapi_symbols": "symbols",
+        ":libdashapi/postinst": "postinst",
+        ":libdashapi/prerm": "prerm",
+    },
+    data = ":libdashapi/data.tar",
+    deb = ":libdashapi_deb",
+    package = "libdashapi",
+    tags = ["manual"],
+    version = "1.0.0",
+)

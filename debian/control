@@ -2,11 +2,11 @@ Source: sonic
 Maintainer: Ze Gan <zegan@microsoft.com>
 Section: net
 Priority: optional
-Build-Depends: debhelper (>= 12), protobuf-compiler (>=3.21.12), libprotobuf-dev (>=3.21.12)
+Build-Depends: debhelper (>= 12), dh-python, python3, protobuf-compiler (>=3.21.12), libprotobuf-dev (>=3.21.12)
 Standards-Version: 1.0.0
 
 Package: libdashapi
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Depends: ${shlibs:Depends}, ${python3:Depends}, python3-click, python3-protobuf, ${misc:Pre-Depends}
 Section: libs
 Description: DASH API definition for the SONiC project.

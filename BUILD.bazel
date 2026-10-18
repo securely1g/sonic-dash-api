@@ -169,3 +169,23 @@ sonic_deploy_tar(
         for source, destination, mode in _INSTALL_FILES
     ],
 )
+
+alias(
+    name = "libdashapi_deb",
+    actual = "//debian:libdashapi_deb",
+)
+
+alias(
+    name = "libdashapi_metadata",
+    actual = "//debian:libdashapi_metadata",
+)
+
+alias(
+    name = "libprotobuf32t64_deb",
+    actual = "@protobuf_legacy//sonic:libprotobuf32t64_deb",
+)
+
+alias(
+    name = "libprotobuf32t64_metadata",
+    actual = "@protobuf_legacy//sonic:libprotobuf32t64_metadata",
+)

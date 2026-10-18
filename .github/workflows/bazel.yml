@@ -105,6 +105,9 @@ jobs:
           printf '%s  %s\n' '${{ matrix.bazel_sha }}' /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
 
+      - name: Select reviewed Debian package prerequisites
+        run: python3 bazel/ci/prepare_debian_registry.py
+
       - name: Check Bazel formatting
         run: >-
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=update
@@ -118,13 +121,29 @@ jobs:
           //bazel:source_contract_test //bazel:runtime_consumer_test
           //bazel:utils_test //bazel:python_test
 
-      - name: Stage runtime and debug tars and test their installed consumers
+      - name: Build and check the actual Debian packages
+        run: |
+          bazel build ${{ matrix.bazel_args }} --jobs=4 --lockfile_mode=update \
+            //debian:libdashapi_check @protobuf_legacy//sonic:libprotobuf32t64_check \
+            //:libdashapi_deb //:libprotobuf32t64_deb
+          mkdir -p artifacts/debian
+          for target in //:libdashapi_deb //:libprotobuf32t64_deb; do
+            package=$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update "$target" --output=files)
+            test -f "$package"
+            cp "$package" artifacts/debian/
+          done
+
+      - name: Install the source packages and test their installed consumers
         run: |
           # DASH and its shared C++ Protobuf runtime come from source-built
           # tars. The remaining dependencies use the signed toolchain snapshots.
+          # Install Debian's version first, then prove apt upgrades it to the
+          # declared source-built SONiC package while installing DASH.
           apt-get install -y --no-install-recommends \
-            libc6 libgcc-s1 libstdc++6 \
-            python3 python3-click python3-protobuf
+            libc6 libgcc-s1 libstdc++6 python3 python3-click python3-protobuf
+          dpkg-query -W -f='${Version}\n' libprotobuf32t64 > artifacts/debian/protobuf-before.txt
+          apt-get install -y --no-install-recommends "$GITHUB_WORKSPACE"/artifacts/debian/*.deb
+          dpkg --compare-versions "$(cat artifacts/debian/protobuf-before.txt)" lt "$(dpkg-query -W -f='${Version}' libprotobuf32t64)"
           runtime_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:libdashapi_pkg --output=files)"
           debug_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:libdashapi_pkg.debug_symbols --output=files)"
           protobuf_runtime_tar="$(bazel cquery ${{ matrix.bazel_args }} --lockfile_mode=update //:protobuf_runtime_pkg --output=files)"
@@ -133,9 +152,7 @@ jobs:
           test -f "$debug_tar"
           test -f "$protobuf_runtime_tar"
           test -f "$protobuf_debug_tar"
-          tar --extract --file "$protobuf_runtime_tar" --directory /
           tar --extract --file "$protobuf_debug_tar" --directory /
-          tar --extract --file "$runtime_tar" --directory /
           tar --extract --file "$debug_tar" --directory /
           ldconfig
           env -u LD_LIBRARY_PATH -u PYTHONPATH \
@@ -146,6 +163,11 @@ jobs:
             > artifacts/validation/installed-packages.txt
           apt-cache policy python3-protobuf \
             > artifacts/validation/installed-runtime-policy.txt
+
+      - name: Check Debian package reinstall, removal and purge
+        env:
+          SONIC_DEB_TEST_CONTAINER: 1
+        run: bash bazel/ci/check_debian_install.sh artifacts/debian
 
       - name: Record source generation and compilation actions
         run: >-
@@ -186,6 +208,7 @@ jobs:
           name: sonic-dash-api-packages-${{ matrix.arch }}-${{ github.sha }}
           path: |
             artifacts/packages/
+            artifacts/debian/
             artifacts/development/
             artifacts/consumer/
             artifacts/provenance.json
