@@ -105,6 +105,34 @@ jobs:
           printf '%s  %s\n' '${{ matrix.bazel_sha }}' /tmp/bazel | sha256sum --check --strict
           install -m 0755 /tmp/bazel /usr/local/bin/bazel
 
+      - name: Select and record the maintained registry revision
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          import re
+          import subprocess
+          main = "https://raw.githubusercontent.com/securely1g/sonic-bazel-registry/main"
+          ref = "refs/heads/main"
+          advertised = subprocess.check_output(["git", "ls-remote",
+              "https://github.com/securely1g/sonic-bazel-registry.git", ref], text=True).split()
+          assert len(advertised) == 2 and advertised[1] == ref
+          revision = advertised[0]
+          assert re.fullmatch(r"[0-9a-f]{40}", revision)
+          registry = main
+          configuration = Path(".bazelrc").read_text()
+          assert configuration.count(main) == 1
+          artifacts = Path("artifacts/validation").resolve()
+          artifacts.mkdir(parents=True, exist_ok=True)
+          (artifacts / "declared.bazelrc").write_text(configuration)
+          effective = artifacts / "effective.bazelrc"
+          effective.write_text(configuration)
+          (artifacts / "registry-inputs.json").write_text(json.dumps({
+              "declared_registry": main, "registry": registry,
+              "observed_revision": revision, "draft_validation": False,
+          }, indent=2) + "\n")
+          PYTHON
+
       - name: Check Bazel formatting
         run: >-
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=update

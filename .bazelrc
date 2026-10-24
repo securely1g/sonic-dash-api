@@ -11,3 +11,6 @@ common:aarch64 --host_platform=@sonic_build_infra//platforms:aarch64_trixie
 
 # Match the legacy optimized build; deploy targets retain and split DWARF.
 build --compilation_mode=opt
+
+# Dependencies do not import their .bazelrc; select cached kernel tools here.
+build --remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$

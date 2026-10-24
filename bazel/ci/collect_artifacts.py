@@ -91,7 +91,7 @@ def main() -> None:
     platform_label = "@sonic_build_infra//platforms:" + platform_name
     mapping = json.loads(bazel("mod", "dump_repo_mapping", ""))
     require(all(re.fullmatch(r"[A-Za-z0-9._+-]+", mapping[name]) is not None
-                for name in ("sonic_build_infra", "rules_distroless", "protobuf_legacy")),
+                for name in ("sonic_build_infra", "rules_distroless", "protobuf_legacy", "tar.bzl")),
             "resolved canonical repository is ambiguous")
     canonical = mapping["sonic_build_infra"]
     # Bazel 8 info does not apply the root module's apparent-repository mapping
@@ -158,6 +158,7 @@ def main() -> None:
     resolved_modules = {}
     for key, name, apparent in (
         ("infrastructure", "sonic-build-infra", "sonic_build_infra"),
+        ("tar", "tar.bzl", "tar.bzl"),
         ("distroless", "rules_distroless", "rules_distroless"),
         ("protobuf", "protobuf-legacy", "protobuf_legacy"),
     ):
