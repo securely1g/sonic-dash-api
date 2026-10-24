@@ -60,6 +60,15 @@ the landed source-built Protobuf registration from
 root-owned tar metadata from [infrastructure #16](https://github.com/securely1g/sonic-build-infra/pull/16)
 and [registry #23](https://github.com/securely1g/sonic-bazel-registry/pull/23).
 
+The selected infrastructure is `0.0.22-a12bc826d6f811a157db5c7c02a2fe033896cc14`.
+The root `.bazelrc` supplies
+`--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$`
+for its cached kernel-tool trees. Dependencies do not import their `.bazelrc`,
+so downstream roots selecting this infrastructure need the same option; a
+command using `--ignore_all_rc_files` must pass it explicitly. While this
+version is unpublished, draft CI explicitly selects the reviewed registry
+snapshot recorded in its workflow; the checked-in default stays on `main`.
+
 | Dependency | Role |
 | --- | --- |
 | Upstream Protobuf v21.12 (3.21.12) | Source-built compiler and shared C++ runtime from one release, using upstream build definitions through `protobuf-legacy` |
@@ -70,9 +79,15 @@ and [registry #23](https://github.com/securely1g/sonic-bazel-registry/pull/23).
 
 DASH and its C++ Protobuf compiler/runtime are compiled from source; pinned APT
 packages and wheels supply the other dependencies. The separate Python runtime
-versions above remain intentional consumer inputs. The Distroless override keeps the native protobuf header
-fix selected despite older dependency versions that sort above it. CI verifies
+versions above remain intentional consumer inputs. Distroless `0.9.4.sonic.13` carries the native protobuf header fix and the
+declared-tool support required by the selected infrastructure. It sorts above
+older dependency requests without a root override. CI verifies
 the resolved infrastructure, Distroless and Protobuf declarations and retains the module graph.
+
+The root pins `tar.bzl@0.10.5-sonic.1`, including a root override because
+dependency overrides do not propagate. Its `default_mtime` API is required by
+`//:libdashapi_pkg_rttar` for reproducible deployment archives. CI retains the
+fetched tar-module declaration alongside the infrastructure declaration.
 
 The deployed runtime needs the source-built Protobuf runtime tar plus `libc6`,
 `libgcc-s1`, `libstdc++6`, Python 3.13, `python3-click`, and `python3-protobuf`.
@@ -96,6 +111,11 @@ this generated lock.
 | `runtime_consumer_test` | C++/C API behavior, exact 3.21.12 headers, and loading of the selected DASH and shared Protobuf files |
 | `source_contract_test` | Complete tar inventory, ownership, modes, architecture, SONAME, dependencies, build IDs, debuglink checksums and GDB source-line lookup |
 | `installed_tar_test.py` (CI) | Installed C/Python/SWIG/CLI roundtrips with system Python and standard paths; loaded Protobuf bytes match its runtime tar without custom library search paths |
+
+The utility suite calls Protobuf through `libdashapi`. Its test environment
+preloads the declared `@protobuf_legacy//:shared_library` runfile so that this
+indirect dependency cannot fall back to a host library. The library and TAR
+targets retain their production link and installation settings.
 
 Required source checks are `Bazel (AMD64)` and `Bazel (ARM64)`. Both run the
 four Bazel tests uncached, extract the built tars with their external runtime

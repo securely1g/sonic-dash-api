@@ -39,7 +39,11 @@ cc_test(
     data = [
         "//:proto/types.proto",
         "//:proto_sources",
+        "@protobuf_legacy//:shared_library",
     ],
+    # This suite calls Protobuf indirectly through libdashapi. Load the exact
+    # declared runtime before the loader follows that transitive dependency.
+    env = {"LD_PRELOAD": "$(rootpath @protobuf_legacy//:shared_library)"},
     # Debian's Boost meta-packages provide search paths and declared files;
     # select the two libraries used by the existing Make test explicitly.
     linkopts = [
