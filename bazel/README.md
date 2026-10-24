@@ -65,9 +65,9 @@ The root `.bazelrc` supplies
 `--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$`
 for its cached kernel-tool trees. Dependencies do not import their `.bazelrc`,
 so downstream roots selecting this infrastructure need the same option; a
-command using `--ignore_all_rc_files` must pass it explicitly. While this
-version is unpublished, draft CI explicitly selects the reviewed registry
-snapshot recorded in its workflow; the checked-in default stays on `main`.
+command using `--ignore_all_rc_files` must pass it explicitly. CI records the
+current maintained registry revision for the run; the checked-in
+default stays on `main`.
 
 | Dependency | Role |
 | --- | --- |
