@@ -12,10 +12,10 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = Tr
 bazel_dep(name = "googletest", version = "1.14.0.bcr.1", repo_name = "com_google_googletest")
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.16")
-bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.13")
+bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.15")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "protobuf-legacy", version = "3.21.12-sonic.1", repo_name = "protobuf_legacy")
-bazel_dep(name = "sonic-build-infra", version = "0.0.22-a12bc826d6f811a157db5c7c02a2fe033896cc14", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-build-infra", version = "0.0.25-34de7330abc72229dfc8dab88dec71b89c52aa88", repo_name = "sonic_build_infra")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
 
 # The SONiC deployment rule needs the patched deterministic-time tar API.
@@ -74,3 +74,15 @@ http_archive(
     type = "tar.gz",
     urls = ["https://codeload.github.com/securely1g/sonic-dash-api/tar.gz/18a29c1c8a21aeb22a4893c786564acaf8212156"],
 )
+
+# Target libraries used to derive the installed Debian dependency controls.
+apt.install(
+    dependency_set = "dash_runtime_debian",
+    packages = ["libprotobuf32t64"],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+use_repo(apt, "dash_runtime_debian")
