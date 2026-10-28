@@ -1,5 +1,6 @@
 load("@protobuf_legacy//:defs.bzl", "cpp_proto_sources", "python_proto_sources")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
+load("@sonic_build_infra//oci:runtime_packages.bzl", "runtime_packages")
 load("@sonic_build_infra//tar:sonic_deploy_tar.bzl", "sonic_deploy_tar")
 
 package(default_visibility = ["//visibility:public"])
@@ -168,4 +169,20 @@ sonic_deploy_tar(
         "{} uid=0 gid=0 mode={} time=0 type=file content=$(location {})".format(destination, mode, source)
         for source, destination, mode in _INSTALL_FILES
     ],
+)
+
+# Publish package facts from the owning Debian recipe and this exact runtime TAR.
+runtime_packages(
+    name = "runtime_packages.json",
+    apt_packages = {
+        "@dash_runtime_debian//libprotobuf32t64:data": "@dash_runtime_debian//libprotobuf32t64:control",
+    },
+    changelog = "debian/changelog",
+    control = "debian/control",
+    debian_files = {"compat": "debian/compat"},
+    packages = {"libdashapi": ":libdashapi_pkg"},
+    required_paths = {"libdashapi": [
+        "usr/lib/libdashapi.so",
+        "usr/lib/python3/dist-packages/dash_api/_utils.so",
+    ]},
 )
