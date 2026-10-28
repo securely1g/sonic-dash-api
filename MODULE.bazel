@@ -1,6 +1,6 @@
 module(
     name = "sonic-dash-api",
-    version = "0.0.4",
+    version = "0.0.5",
     bazel_compatibility = [
         ">=8.5.1",
         "<=8.5.1",
@@ -15,7 +15,7 @@ bazel_dep(name = "rules_cc", version = "0.2.16")
 bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.13")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "protobuf-legacy", version = "3.21.12-sonic.1", repo_name = "protobuf_legacy")
-bazel_dep(name = "sonic-build-infra", version = "0.0.22-a12bc826d6f811a157db5c7c02a2fe033896cc14", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-build-infra", version = "0.0.25-1341eaf4a7759ef0121ae7c17edcd0000d063038", repo_name = "sonic_build_infra")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
 
 # The SONiC deployment rule needs the patched deterministic-time tar API.
@@ -61,3 +61,15 @@ apt.install(
     ],
 )
 use_repo(apt, "dash_test_debian")
+
+# Target libraries used to derive the installed Debian dependency controls.
+apt.install(
+    dependency_set = "dash_runtime_debian",
+    packages = ["libprotobuf32t64"],
+    suites = [
+        "trixie",
+        "trixie-updates",
+        "trixie-security",
+    ],
+)
+use_repo(apt, "dash_runtime_debian")
