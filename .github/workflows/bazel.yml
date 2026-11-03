@@ -133,6 +133,9 @@ jobs:
           }, indent=2) + "\n")
           PYTHON
 
+      - name: Test artifact collection paths
+        run: python3 -m unittest discover -s bazel/ci -p collect_artifacts_test.py
+
       - name: Check Bazel formatting
         run: >-
           bazel run ${{ matrix.bazel_args }} --lockfile_mode=update
@@ -144,7 +147,7 @@ jobs:
           --nocache_test_results --test_output=errors
           --build_event_json_file="$GITHUB_WORKSPACE/artifacts/validation/build-test-events.json"
           //bazel:source_contract_test //bazel:runtime_consumer_test
-          //bazel:utils_test //bazel:python_test
+          //bazel:utils_test //bazel:python_test //bazel:ha_schema_test
 
       - name: Build producer package metadata
         run: |
