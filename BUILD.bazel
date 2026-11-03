@@ -169,3 +169,14 @@ sonic_deploy_tar(
         for source, destination, mode in _INSTALL_FILES
     ],
 )
+
+# Preserve HA's selected wire schema without changing the current C++/Python API.
+# HA owns its Rust adapter and prost generator; this owner supplies the inputs.
+filegroup(
+    name = "ha_schema_sources",
+    srcs = [
+        "@dash_ha_schema//:proto/ha_scope_config.proto",
+        "@dash_ha_schema//:proto/ha_set_config.proto",
+        "@dash_ha_schema//:proto/types.proto",
+    ],
+)
