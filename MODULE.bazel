@@ -15,7 +15,7 @@ bazel_dep(name = "rules_cc", version = "0.2.16")
 bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.13")
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "protobuf-legacy", version = "3.21.12-sonic.1", repo_name = "protobuf_legacy")
-bazel_dep(name = "sonic-build-infra", version = "0.0.25-1341eaf4a7759ef0121ae7c17edcd0000d063038", repo_name = "sonic_build_infra")
+bazel_dep(name = "sonic-build-infra", version = "0.0.26-51c838da6ff57295fde6e0bc3807841cb31a8568", repo_name = "sonic_build_infra")
 bazel_dep(name = "tar.bzl", version = "0.10.5-sonic.1")
 
 # The SONiC deployment rule needs the patched deterministic-time tar API.
@@ -85,4 +85,10 @@ http_archive(
     strip_prefix = "sonic-dash-api-18a29c1c8a21aeb22a4893c786564acaf8212156",
     type = "tar.gz",
     urls = ["https://codeload.github.com/securely1g/sonic-dash-api/tar.gz/18a29c1c8a21aeb22a4893c786564acaf8212156"],
+)
+
+# Review composition selects the single current infrastructure candidate.
+single_version_override(
+    module_name = "sonic-build-infra",
+    version = "0.0.26-51c838da6ff57295fde6e0bc3807841cb31a8568",
 )
