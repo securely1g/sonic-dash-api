@@ -18,6 +18,7 @@ TESTS = {
     "//bazel:source_contract_test": "bazel/source_contract_test",
     "//bazel:runtime_consumer_test": "bazel/runtime_consumer_test",
     "//bazel:utils_test": "bazel/utils_test",
+    "//bazel:ha_schema_test": "bazel/ha_schema_test",
     # The public //bazel test suite runs this native Python test.
     "//bazel:python_test": "misc/python_test",
 }
@@ -25,6 +26,7 @@ DECLARATIONS = (
     ".bazelversion", ".bazelrc", "MODULE.bazel",
     "BUILD.bazel", "bazel/BUILD.bazel", "misc/BUILD.bazel", "Makefile",
     "bazel/installed_tar_test.py", "bazel/source_contract_test.py",
+    "bazel/ha_schema.BUILD.bazel", "bazel/ha_schema_test.py", "bazel/ha_schema.md",
 )
 PACKAGES = {
     "//:libdashapi_pkg": (".tar", "packages/libdashapi.tar"),
@@ -59,6 +61,19 @@ def module_version(text: str, rule: str, name: str = "sonic-build-infra") -> str
             versions.append(match.group(1))
     require(len(versions) == 1, "expected exactly one " + name + " declaration")
     return versions[0]
+
+
+def materialized_files(names: list[str], execution_root: Path, output_base: Path, target: str) -> list[Path]:
+    # Source-only external repositories need not remain linked into the
+    # execution root after another Bazel command. Resolve that exact
+    # cquery path from Bazel's external repository store when necessary.
+    paths = [execution_root / name for name in names]
+    paths = [
+        output_base / name if not path.is_file() and name.startswith("external/") else path
+        for name, path in zip(names, paths)
+    ]
+    require(all(path.is_file() for path in paths), "target output is missing: " + target)
+    return paths
 
 
 def main() -> None:
@@ -100,13 +115,12 @@ def main() -> None:
     info_options = ["--platforms=" + canonical_platform, "--host_platform=" + canonical_platform]
     execution_root = Path(bazel("info", *info_options, "execution_root"))
     testlogs = Path(bazel("info", *info_options, "bazel-testlogs"))
+    output_base = Path(bazel("info", *info_options, "output_base"))
 
     def files(target: str) -> list[Path]:
         names = bazel("cquery", "config(" + target + ", target)", "--output=files").splitlines()
         require(bool(names), "target has no materialized outputs: " + target)
-        paths = [execution_root / name for name in names]
-        require(all(path.is_file() for path in paths), "target output is missing: " + target)
-        return paths
+        return materialized_files(names, execution_root, output_base, target)
 
     def retain(source: Path, relative: str | Path) -> None:
         require(source.is_file(), "required artifact is missing: " + str(source))
@@ -150,10 +164,13 @@ def main() -> None:
         retain(repo / declaration, Path("validation/declarations") / declaration)
     for source in proto_sources:
         retain(source, Path("validation/declarations/proto") / source.name)
+    for source in files("//:ha_schema_sources"):
+        retain(source, Path("validation/ha-schema") / source.name)
+    for descriptor in files("//bazel:ha_schema_descriptor"):
+        retain(descriptor, Path("validation/ha-schema") / descriptor.name)
     for source in sorted([*(repo / "bazel").rglob("*.bzl"), *(repo / "misc").glob("*.bzl")]):
         retain(source, Path("validation/declarations") / source.relative_to(repo))
     # Extension-only repositories need not have a symlink in the action execroot.
-    output_base = Path(bazel("info", *info_options, "output_base"))
     root_module = (repo / "MODULE.bazel").read_text()
     resolved_modules = {}
     for key, name, apparent in (
