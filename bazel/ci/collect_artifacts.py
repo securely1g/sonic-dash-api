@@ -191,7 +191,16 @@ def main() -> None:
             "canonical_repository": repository,
             "module_sha256": sha256(fetched_module),
         }
-    protobuf_root = output_base / "external" / mapping["protobuf_legacy"]
+    # The registry module forwards its public targets to the Debian-patched source repository.
+    protobuf_module = mapping["protobuf_legacy"]
+    source_mapping = json.loads(bazel("mod", "dump_repo_mapping", protobuf_module))
+    protobuf_source = source_mapping["protobuf_source"]
+    require(re.fullmatch(r"[A-Za-z0-9._+-]+", protobuf_source) is not None,
+            "resolved Protobuf source repository is ambiguous")
+    for declaration in ("BUILD.bazel", "bazel/source.bzl"):
+        retain(output_base / "external" / protobuf_module / declaration,
+               Path("validation/declarations/protobuf-module") / declaration)
+    protobuf_root = output_base / "external" / protobuf_source
     for declaration in (
         "BUILD.bazel", "protobuf.bzl", "defs.bzl", "sonic/targets.bzl",
         "src/google/protobuf/stubs/common.h", "src/google/protobuf/compiler/main.cc",
@@ -205,11 +214,15 @@ def main() -> None:
     source_actions = json.loads((output / "validation/source-actions.json").read_text())
     actions = source_actions.get("actions", [])
     protobuf_actions = [action for action in actions
-                        if mapping["protobuf_legacy"] + "/" in " ".join(action.get("arguments", []))]
+                        if protobuf_source + "/" in " ".join(action.get("arguments", []))]
     counts = {mnemonic: sum(action.get("mnemonic") == mnemonic for action in protobuf_actions)
               for mnemonic in ("CppCompile", "ProtoCompile")}
     require(all(counts.values()), "source actions omit upstream Protobuf compilation or generation")
-    resolved_modules["protobuf"].update({"compiler_version": protoc_version, "source_action_counts": counts})
+    resolved_modules["protobuf"].update({
+        "compiler_version": protoc_version,
+        "source_repository": protobuf_source,
+        "source_action_counts": counts,
+    })
     graph = json.loads(bazel("mod", "graph", "--output=json"))
     require(isinstance(graph, dict) and bool(graph), "resolved module graph is empty")
     (output / "validation/module-graph.json").write_text(json.dumps(graph, indent=2, sort_keys=True) + "\n")
