@@ -19,7 +19,10 @@ bazel_dep(name = "sonic-build-infra", version = "0.0.37-316e298e77ab5cfa69af9b0c
 bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")
 
 # Keep the Trixie C++ toolchain compatible with Bazel 8.5.1.
-single_version_override(module_name = "rules_cc", version = "0.2.20")
+single_version_override(
+    module_name = "rules_cc",
+    version = "0.2.20",
+)
 
 # The SONiC deployment rule needs the patched deterministic-time tar API.
 # Dependency overrides do not propagate into this root.
