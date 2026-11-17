@@ -107,7 +107,10 @@ def check_protobuf(runtime_tar: Path, debug_tar: Path, architecture: str) -> dic
     multiarch = {"amd64": "x86_64-linux-gnu", "arm64": "aarch64-linux-gnu"}[architecture]
     library = "usr/lib/" + multiarch + "/libprotobuf.so.32.0.12"
     soname = "usr/lib/" + multiarch + "/libprotobuf.so.32"
-    copyright_path = "usr/share/doc/protobuf-legacy/copyright"
+    copyright_paths = {
+        "usr/share/doc/protobuf-legacy/copyright",
+        "usr/share/doc/libprotobuf32t64/copyright",
+    }
     files = {}
     links = {}
     with tarfile.open(runtime_tar) as archive:
@@ -126,7 +129,8 @@ def check_protobuf(runtime_tar: Path, debug_tar: Path, architecture: str) -> dic
                 stream = archive.extractfile(member)
                 require(stream is not None, "unreadable Protobuf archive member")
                 files[key] = (stream.read(), member.mode & 0o777)
-    require(set(files) == {library, copyright_path}, "unexpected Protobuf runtime inventory")
+    expected_files = {library} | copyright_paths
+    require(set(files) == expected_files, "unexpected Protobuf runtime inventory: " + str(sorted(set(files) ^ expected_files)))
     require(links == {soname: "libprotobuf.so.32.0.12"}, "Protobuf SONAME symlink differs from its source ELF")
     debug = tar_inventory(debug_tar)
     with tempfile.TemporaryDirectory(prefix="dash-protobuf-contract-") as temporary:
