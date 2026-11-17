@@ -11,12 +11,15 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.3", dev_dependency = Tr
 
 bazel_dep(name = "googletest", version = "1.14.0.bcr.1", repo_name = "com_google_googletest")
 bazel_dep(name = "platforms", version = "1.1.0")
-bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "rules_cc", version = "0.2.20")
 bazel_dep(name = "rules_distroless", version = "0.9.4.sonic.20")
 bazel_dep(name = "rules_python", version = "1.9.0.sonic.1")
 bazel_dep(name = "protobuf-legacy", version = "3.21.12.sonic.2", repo_name = "protobuf_legacy")
 bazel_dep(name = "sonic-build-infra", version = "0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e", repo_name = "sonic_build_infra")
 bazel_dep(name = "tar.bzl", version = "0.10.5.sonic.2")
+
+# Keep the Trixie C++ toolchain compatible with Bazel 8.5.1.
+single_version_override(module_name = "rules_cc", version = "0.2.20")
 
 # The SONiC deployment rule needs the patched deterministic-time tar API.
 # Dependency overrides do not propagate into this root.
