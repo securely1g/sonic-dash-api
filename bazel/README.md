@@ -60,7 +60,7 @@ the landed source-built Protobuf registration from
 root-owned tar metadata from [infrastructure #16](https://github.com/securely1g/sonic-build-infra/pull/16)
 and [registry #23](https://github.com/securely1g/sonic-bazel-registry/pull/23).
 
-The selected infrastructure is `0.0.22-a12bc826d6f811a157db5c7c02a2fe033896cc14`.
+The selected infrastructure is `0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e`.
 The root `.bazelrc` supplies
 `--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$`
 for its cached kernel-tool trees. Dependencies do not import their `.bazelrc`,
@@ -79,12 +79,12 @@ default stays on `main`.
 
 DASH and its C++ Protobuf compiler/runtime are compiled from source; pinned APT
 packages and wheels supply the other dependencies. The separate Python runtime
-versions above remain intentional consumer inputs. Distroless `0.9.4.sonic.13` carries the native protobuf header fix and the
+versions above remain intentional consumer inputs. Distroless `0.9.4.sonic.20` carries the native protobuf header fix and the
 declared-tool support required by the selected infrastructure. It sorts above
 older dependency requests without a root override. CI verifies
 the resolved infrastructure, Distroless and Protobuf declarations and retains the module graph.
 
-The root pins `tar.bzl@0.10.5-sonic.1`, including a root override because
+The root pins `tar.bzl@0.10.5.sonic.2`, including a root override because
 dependency overrides do not propagate. Its `default_mtime` API is required by
 `//:libdashapi_pkg_rttar` for reproducible deployment archives. CI retains the
 fetched tar-module declaration alongside the infrastructure declaration.
