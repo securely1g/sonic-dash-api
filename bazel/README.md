@@ -60,7 +60,7 @@ the landed source-built Protobuf registration from
 root-owned tar metadata from [infrastructure #16](https://github.com/securely1g/sonic-build-infra/pull/16)
 and [registry #23](https://github.com/securely1g/sonic-bazel-registry/pull/23).
 
-The selected infrastructure is `0.0.37-316e298e77ab5cfa69af9b0c05ec24d5d94bbe1e`.
+The selected infrastructure is `0.0.44-35726399908a3beb947174e9359f902077928289`.
 The root `.bazelrc` supplies
 `--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$`
 for its cached kernel-tool trees. Dependencies do not import their `.bazelrc`,
