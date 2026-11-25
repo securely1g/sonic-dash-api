@@ -54,13 +54,8 @@ the tars directly. This component does not define Bazel DEB or container targets
 
 [`MODULE.bazel`](../MODULE.bazel) declares versions and
 [`.bazelrc`](../.bazelrc) uses the maintained SONiC registry `main` branch,
-plus Bazel Central Registry for CI and local commands. The registry includes
-the landed source-built Protobuf registration from
-[registry #25](https://github.com/securely1g/sonic-bazel-registry/pull/25) and
-root-owned tar metadata from [infrastructure #16](https://github.com/securely1g/sonic-build-infra/pull/16)
-and [registry #23](https://github.com/securely1g/sonic-bazel-registry/pull/23).
-
-The selected infrastructure is `0.0.44-35726399908a3beb947174e9359f902077928289`.
+plus Bazel Central Registry for CI and local commands. The SONiC registry provides the source-built Protobuf compiler and runtime.
+Build Infra supplies the tar packaging rules and execution tools.
 The root `.bazelrc` supplies
 `--remote_download_regex=(^|.*/)tools/build_tools/kernel_runtime_(amd64|arm64)(/.*)?$`
 for its cached kernel-tool trees. Dependencies do not import their `.bazelrc`,
